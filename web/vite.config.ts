@@ -10,6 +10,12 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
+      injectManifest: {
+        injectionPoint: "self.__WB_MANIFEST",
+      },
       includeAssets: ["icons/apple-touch-icon.png"],
       manifest: {
         name: "Домакински задачи",

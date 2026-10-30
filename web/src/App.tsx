@@ -1,5 +1,6 @@
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { FamilyProvider, useFamily } from "./context/FamilyContext";
+import { TaskProvider } from "./context/TaskContext";
 import AuthScreen from "./pages/AuthScreen";
 import FamilySetupScreen from "./pages/FamilySetupScreen";
 import DashboardScreen from "./pages/DashboardScreen";
@@ -37,7 +38,15 @@ function FamilyRouter() {
     return <LoadingScreen />;
   }
 
-  return family ? <DashboardScreen /> : <FamilySetupScreen />;
+  if (!family) {
+    return <FamilySetupScreen />;
+  }
+
+  return (
+    <TaskProvider>
+      <DashboardScreen />
+    </TaskProvider>
+  );
 }
 
 export default function App() {

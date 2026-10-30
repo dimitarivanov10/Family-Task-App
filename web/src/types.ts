@@ -7,6 +7,7 @@ export interface Family {
   name: string;
   inviteCode: string;
   members: string[];
+  memberNames: Record<string, string>;
   createdBy: string;
   createdAt: Timestamp;
 }

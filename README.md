@@ -33,6 +33,19 @@ web/                    Frontend PWA
 functions/              Cloud Functions
 ```
 
+## Push notifications
+
+Reminders fire 5h, 1h, 30min and 10min before a task's deadline via the
+`sendTaskReminders` scheduled function, sent to each assignee's registered
+device tokens (`users/{uid}/devices/{deviceId}`). To receive them in the
+browser:
+
+1. Generate a Web Push certificate under Firebase console -> Project
+   settings -> Cloud Messaging -> Web configuration, and put it in
+   `web/.env` as `VITE_FIREBASE_VAPID_KEY`.
+2. Push notifications require HTTPS (or `localhost`) and browser
+   permission, granted via the in-app "Включи известия" banner.
+
 ## Local setup
 
 1. Install the root tooling (Firebase CLI) and each workspace's deps:
@@ -46,7 +59,7 @@ functions/              Cloud Functions
    config (from Firebase console → Project settings → General). `.env` is
    gitignored — never commit real keys.
 4. Enable Email/Password sign-in under Authentication → Sign-in method.
-5. Run the emulators:
+5. The Firestore/Auth emulators require a JDK (11+) on PATH. Then run:
    ```
    npm run emulators
    ```

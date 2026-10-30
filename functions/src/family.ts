@@ -1,5 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 import type { FamilyDoc } from "./types";
 
 const INVITE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I
@@ -26,6 +27,21 @@ async function generateUniqueInviteCode(): Promise<string> {
   throw new HttpsError("internal", "Неуспешно генериране на уникален код за покана. Опитайте отново.");
 }
 
+// The family doc only stores uids for membership checks; display names are
+// denormalized into memberNames here (set with the Admin SDK) so every
+// member can show teammates' names without being able to read their
+// private users/{uid} profile.
+async function resolveDisplayName(uid: string): Promise<string> {
+  const db = getFirestore();
+  const profileSnap = await db.collection("users").doc(uid).get();
+  const profileName = profileSnap.data()?.displayName as string | undefined;
+  if (profileName) {
+    return profileName;
+  }
+  const authUser = await getAuth().getUser(uid);
+  return authUser.displayName || authUser.email || "Член на семейството";
+}
+
 export const createFamily = onCall<{ name: string }>(async (request) => {
   const uid = request.auth?.uid;
   if (!uid) {
@@ -38,6 +54,7 @@ export const createFamily = onCall<{ name: string }>(async (request) => {
   }
 
   const inviteCode = await generateUniqueInviteCode();
+  const displayName = await resolveDisplayName(uid);
   const db = getFirestore();
   const familyRef = db.collection("families").doc();
 
@@ -45,6 +62,7 @@ export const createFamily = onCall<{ name: string }>(async (request) => {
     name,
     inviteCode,
     members: [uid],
+    memberNames: { [uid]: displayName },
     createdBy: uid,
     createdAt: FieldValue.serverTimestamp() as unknown as FamilyDoc["createdAt"],
   };
@@ -76,8 +94,10 @@ export const joinFamily = onCall<{ inviteCode: string }>(async (request) => {
   const family = familyDoc.data() as FamilyDoc;
 
   if (!family.members.includes(uid)) {
+    const displayName = await resolveDisplayName(uid);
     await familyDoc.ref.update({
       members: FieldValue.arrayUnion(uid),
+      [`memberNames.${uid}`]: displayName,
     });
   }
 
