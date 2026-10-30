@@ -1,0 +1,48 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isFamilyMember(familyId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/families/$(familyId))
+        && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members;
+    }
+
+    // User profile: only the owner can read/write their own profile.
+    match /users/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create, update: if isSignedIn() && request.auth.uid == uid;
+      allow delete: if false;
+
+      // FCM device tokens: not tamper-sensitive, owner manages directly.
+      match /devices/{deviceId} {
+        allow read, write: if isSignedIn() && request.auth.uid == uid;
+      }
+    }
+
+    // Families: created/joined only through Cloud Functions (Admin SDK),
+    // so invite codes and membership can be validated server-side.
+    match /families/{familyId} {
+      allow read: if isFamilyMember(familyId);
+      allow write: if false;
+
+      // Tasks: create/update/delete only through Cloud Functions so every
+      // mutation is paired with a server-timestamped history entry.
+      match /tasks/{taskId} {
+        allow read: if isFamilyMember(familyId);
+        allow write: if false;
+
+        // Append-only audit log. Never writable from the client.
+        match /history/{eventId} {
+          allow read: if isFamilyMember(familyId);
+          allow write: if false;
+        }
+      }
+    }
+  }
+}

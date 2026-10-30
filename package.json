@@ -1,0 +1,16 @@
+{
+  "name": "family-task-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Family household task app (installable PWA on Firebase)",
+  "scripts": {
+    "emulators": "firebase emulators:start --import=./.firebase-emulator-data --export-on-exit",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
+    "functions:build": "npm --prefix functions run build",
+    "deploy": "npm run web:build && npm run functions:build && firebase deploy"
+  },
+  "devDependencies": {
+    "firebase-tools": "^13.29.1"
+  }
+}
