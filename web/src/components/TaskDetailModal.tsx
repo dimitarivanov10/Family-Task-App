@@ -17,7 +17,7 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
   const { user } = useAuth();
   const { family } = useFamily();
   const { markSeen, acceptTask, completeTask, changeDeadline } = useTasks();
-  const history = useTaskHistory(family?.id ?? "", task.id);
+  const { history, loading: historyLoading, error: historyError } = useTaskHistory(family?.id ?? "", task.id);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -148,15 +148,21 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
 
         <div className="mt-5 border-t border-slate-100 pt-4">
           <h3 className="text-sm font-medium text-slate-700">История</h3>
-          <ul className="mt-2 space-y-1.5">
-            {history.map((event) => (
-              <li key={event.id} className="text-xs text-slate-500">
-                <span className="font-medium text-slate-700">{HISTORY_LABELS[event.type]}</span>
-                {" — "}
-                {family.memberNames[event.byUid] ?? event.byUid} · {formatDateTime(event.at)}
-              </li>
-            ))}
-          </ul>
+          {historyError && <p className="mt-2 text-xs text-red-600">{historyError}</p>}
+          {!historyError && historyLoading && (
+            <p className="mt-2 text-xs text-slate-400">Зареждане…</p>
+          )}
+          {!historyError && !historyLoading && (
+            <ul className="mt-2 space-y-1.5">
+              {history.map((event) => (
+                <li key={event.id} className="text-xs text-slate-500">
+                  <span className="font-medium text-slate-700">{HISTORY_LABELS[event.type]}</span>
+                  {" — "}
+                  {family.memberNames[event.byUid] ?? event.byUid} · {formatDateTime(event.at)}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <button

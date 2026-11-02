@@ -20,6 +20,7 @@ interface CreateFamilyResult {
 interface FamilyContextValue {
   family: Family | null;
   loading: boolean;
+  error: string | null;
   createFamily: (name: string) => Promise<void>;
   joinFamily: (inviteCode: string) => Promise<void>;
 }
@@ -30,25 +31,36 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [family, setFamily] = useState<Family | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
       setFamily(null);
       setLoading(false);
+      setError(null);
       return;
     }
 
     setLoading(true);
+    setError(null);
     const familiesQuery = query(
       collection(db, "families"),
       where("members", "array-contains", user.uid),
     );
 
-    const unsubscribe = onSnapshot(familiesQuery, (snapshot) => {
-      const first = snapshot.docs[0];
-      setFamily(first ? ({ id: first.id, ...first.data() } as Family) : null);
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      familiesQuery,
+      (snapshot) => {
+        const first = snapshot.docs[0];
+        setFamily(first ? ({ id: first.id, ...first.data() } as Family) : null);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Грешка при зареждане на семейството:", err);
+        setError("Неуспешно зареждане на семейството. Моля, презаредете страницата.");
+        setLoading(false);
+      },
+    );
 
     return unsubscribe;
   }, [user]);
@@ -64,7 +76,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <FamilyContext.Provider value={{ family, loading, createFamily, joinFamily }}>
+    <FamilyContext.Provider value={{ family, loading, error, createFamily, joinFamily }}>
       {children}
     </FamilyContext.Provider>
   );

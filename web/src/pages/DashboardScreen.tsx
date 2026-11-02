@@ -10,7 +10,7 @@ import NotificationsBanner from "../components/NotificationsBanner";
 export default function DashboardScreen() {
   const { user, signOut } = useAuth();
   const { family } = useFamily();
-  const { tasks, loading } = useTasks();
+  const { tasks, loading, error } = useTasks();
   const [creating, setCreating] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
@@ -49,8 +49,9 @@ export default function DashboardScreen() {
           </button>
         </div>
 
-        {loading && <p className="text-sm text-slate-500">Зареждане на задачите…</p>}
-        {!loading && tasks.length === 0 && (
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        {!error && loading && <p className="text-sm text-slate-500">Зареждане на задачите…</p>}
+        {!error && !loading && tasks.length === 0 && (
           <p className="text-sm text-slate-500">Няма задачи все още.</p>
         )}
 

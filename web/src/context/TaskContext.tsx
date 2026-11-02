@@ -21,6 +21,7 @@ interface CreateTaskArgs {
 interface TaskContextValue {
   tasks: Task[];
   loading: boolean;
+  error: string | null;
   createTask: (args: CreateTaskArgs) => Promise<void>;
   markSeen: (taskId: string) => Promise<void>;
   acceptTask: (taskId: string) => Promise<void>;
@@ -34,24 +35,35 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const { family } = useFamily();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!family) {
       setTasks([]);
       setLoading(false);
+      setError(null);
       return;
     }
 
     setLoading(true);
+    setError(null);
     const tasksQuery = query(
       collection(db, "families", family.id, "tasks"),
       orderBy("deadline", "asc"),
     );
 
-    const unsubscribe = onSnapshot(tasksQuery, (snapshot) => {
-      setTasks(snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Task));
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      tasksQuery,
+      (snapshot) => {
+        setTasks(snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Task));
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Грешка при зареждане на задачите:", err);
+        setError("Неуспешно зареждане на задачите. Моля, презаредете страницата.");
+        setLoading(false);
+      },
+    );
 
     return unsubscribe;
   }, [family]);
@@ -88,7 +100,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
   return (
     <TaskContext.Provider
-      value={{ tasks, loading, createTask, markSeen, acceptTask, completeTask, changeDeadline }}
+      value={{ tasks, loading, error, createTask, markSeen, acceptTask, completeTask, changeDeadline }}
     >
       {children}
     </TaskContext.Provider>

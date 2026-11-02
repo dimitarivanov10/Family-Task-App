@@ -19,6 +19,7 @@ import { auth, db } from "../lib/firebase";
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
+  error: string | null;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -29,12 +30,21 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, (nextUser) => {
-      setUser(nextUser);
-      setLoading(false);
-    });
+    return onAuthStateChanged(
+      auth,
+      (nextUser) => {
+        setUser(nextUser);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Грешка при проверка на профила:", err);
+        setError("Неуспешна връзка с профила. Моля, презаредете страницата.");
+        setLoading(false);
+      },
+    );
   }, []);
 
   async function signUp(email: string, password: string, displayName: string) {
@@ -56,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, error, signUp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
