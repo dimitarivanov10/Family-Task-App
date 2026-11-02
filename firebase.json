@@ -1,5 +1,7 @@
 {
   "firestore": {
+    "database": "(default)",
+    "location": "europe-central2",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
@@ -20,6 +22,7 @@
     }
   ],
   "hosting": {
+    "site": "konovi-app",
     "public": "web/dist",
     "ignore": [
       "firebase.json",
@@ -30,17 +33,6 @@
       {
         "source": "**",
         "destination": "/index.html"
-      }
-    ],
-    "headers": [
-      {
-        "source": "/firebase-messaging-sw.js",
-        "headers": [
-          {
-            "key": "Service-Worker-Allowed",
-            "value": "/"
-          }
-        ]
       }
     ]
   },
