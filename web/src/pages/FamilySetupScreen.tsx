@@ -14,7 +14,7 @@ export default function FamilySetupScreen() {
   const { signOut } = useAuth();
   const [mode, setMode] = useState<"create" | "join">("create");
   const [name, setName] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
+  const [familyIdInput, setFamilyIdInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -26,7 +26,7 @@ export default function FamilySetupScreen() {
       if (mode === "create") {
         await createFamily(name);
       } else {
-        await joinFamily(inviteCode);
+        await joinFamily(familyIdInput);
       }
     } catch (err) {
       setError(getErrorMessage(err));
@@ -40,7 +40,7 @@ export default function FamilySetupScreen() {
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
         <h1 className="text-center text-xl font-semibold text-slate-900">Семейство</h1>
         <p className="mt-1 text-center text-sm text-slate-500">
-          Създайте ново семейство или се присъединете с код за покана
+          Създайте ново семейство или се присъединете с ID, споделено от друг член
         </p>
 
         <div className="mt-6 flex rounded-lg bg-slate-100 p-1">
@@ -82,17 +82,17 @@ export default function FamilySetupScreen() {
             </div>
           ) : (
             <div>
-              <label htmlFor="inviteCode" className="block text-sm font-medium text-slate-700">
-                Код за покана
+              <label htmlFor="familyIdInput" className="block text-sm font-medium text-slate-700">
+                ID на семейството
               </label>
               <input
-                id="inviteCode"
+                id="familyIdInput"
                 type="text"
                 required
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                placeholder="напр. AB12CD"
-                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 uppercase tracking-widest text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                value={familyIdInput}
+                onChange={(e) => setFamilyIdInput(e.target.value.trim())}
+                placeholder="Поискайте го от друг член на семейството"
+                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
           )}

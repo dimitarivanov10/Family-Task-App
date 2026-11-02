@@ -5,27 +5,27 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
-import { db, functions } from "../lib/firebase";
+import { arrayUnion, collection, doc, onSnapshot, serverTimestamp, writeBatch } from "firebase/firestore";
+import { db } from "../lib/firebase";
 import { useAuth } from "./AuthContext";
 import type { Family } from "../types";
-
-interface CreateFamilyResult {
-  familyId: string;
-  inviteCode: string;
-  name: string;
-}
 
 interface FamilyContextValue {
   family: Family | null;
   loading: boolean;
   error: string | null;
   createFamily: (name: string) => Promise<void>;
-  joinFamily: (inviteCode: string) => Promise<void>;
+  joinFamily: (familyId: string) => Promise<void>;
 }
 
 const FamilyContext = createContext<FamilyContextValue | undefined>(undefined);
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return "Възникна неочаквана грешка.";
+}
 
 export function FamilyProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -94,13 +94,59 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
   }, [familyId]);
 
   async function createFamily(name: string) {
-    const callable = httpsCallable<{ name: string }, CreateFamilyResult>(functions, "createFamily");
-    await callable({ name });
+    if (!user) return;
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error("Името на семейството не може да е празно.");
+    }
+
+    const familyRef = doc(collection(db, "families"));
+    const displayName = user.displayName || user.email || "Член на семейството";
+
+    const batch = writeBatch(db);
+    batch.set(familyRef, {
+      name: trimmed,
+      members: [user.uid],
+      memberNames: { [user.uid]: displayName },
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+    });
+    batch.set(doc(db, "users", user.uid), { familyId: familyRef.id }, { merge: true });
+
+    try {
+      await batch.commit();
+    } catch (err) {
+      throw new Error(getErrorMessage(err));
+    }
   }
 
-  async function joinFamily(inviteCode: string) {
-    const callable = httpsCallable<{ inviteCode: string }, CreateFamilyResult>(functions, "joinFamily");
-    await callable({ inviteCode });
+  async function joinFamily(familyId: string) {
+    if (!user) return;
+    const trimmedId = familyId.trim();
+    if (!trimmedId) {
+      throw new Error("Въведете ID на семейството.");
+    }
+
+    const familyRef = doc(db, "families", trimmedId);
+    const displayName = user.displayName || user.email || "Член на семейството";
+
+    // No preview read: the join rule validates against Firestore's own
+    // current server-side state regardless of whether the client could
+    // read the doc first, and a non-member can't read it anyway.
+    const batch = writeBatch(db);
+    batch.update(familyRef, {
+      members: arrayUnion(user.uid),
+      [`memberNames.${user.uid}`]: displayName,
+    });
+    batch.set(doc(db, "users", user.uid), { familyId: trimmedId }, { merge: true });
+
+    try {
+      await batch.commit();
+    } catch (err) {
+      throw new Error(
+        "Неуспешно присъединяване — проверете ID на семейството. " + getErrorMessage(err),
+      );
+    }
   }
 
   return (

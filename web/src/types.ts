@@ -5,7 +5,6 @@ export type TaskStatus = "pending" | "seen" | "accepted" | "done";
 export interface Family {
   id: string;
   name: string;
-  inviteCode: string;
   members: string[];
   memberNames: Record<string, string>;
   createdBy: string;
@@ -23,6 +22,10 @@ export interface Task {
   status: TaskStatus;
   nextReminderAt: Timestamp | null;
   remindersSent: string[];
+  proposedDeadline: Timestamp | null;
+  proposedBy: string | null;
+  effectiveDeadline: Timestamp | null;
+  lastHistoryEventId: string;
 }
 
 export type HistoryEventType =
@@ -30,7 +33,8 @@ export type HistoryEventType =
   | "seen"
   | "accepted"
   | "status_changed"
-  | "deadline_changed";
+  | "deadline_proposed"
+  | "deadline_accepted";
 
 export interface HistoryEvent {
   id: string;

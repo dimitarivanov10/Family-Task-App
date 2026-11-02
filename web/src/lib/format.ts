@@ -24,5 +24,6 @@ export const HISTORY_LABELS: Record<string, string> = {
   seen: "Видяна",
   accepted: "Приета",
   status_changed: "Промяна на статуса",
-  deadline_changed: "Промяна на срока",
+  deadline_proposed: "Предложен нов срок",
+  deadline_accepted: "Приет нов срок",
 };

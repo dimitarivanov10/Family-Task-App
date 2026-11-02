@@ -1,64 +1,107 @@
 # Family Task App
 
-Installable PWA for household task assignment with deadline push reminders
-and a tamper-proof, append-only audit log.
+Installable PWA for household task assignment with a tamper-proof,
+append-only audit log. Runs entirely on Firebase's free Spark plan: no
+Cloud Functions, no billing account.
 
 ## Stack
 
 - `web/` — React + Vite + TypeScript + Tailwind + vite-plugin-pwa
-- `functions/` — Cloud Functions (TypeScript, Firebase Functions v2)
-- Firebase Auth, Firestore, Cloud Messaging, Hosting
+- Firebase Auth, Firestore, Cloud Messaging, Hosting (Spark/free plan only)
 - Firebase Emulator Suite for local testing
+- `functions/` — kept in the repo but **not deployed**. See "Why no Cloud
+  Functions" below.
 
 ## Tamper-proof design
 
-- Clients can **never** write directly to `families`, `tasks` or
-  `tasks/{id}/history` — Firestore rules deny all client writes to those
-  paths (see `firestore.rules`).
-- All mutations (create family, join family, create task, change status,
-  change deadline, mark seen/accepted) go through Cloud Functions callables
-  using the Admin SDK. Each callable writes the state change and its
-  matching `history` entry in the same transaction, with a server timestamp.
-- The only paths a client ever writes directly are its own
+Every write to `families`, `tasks` and `tasks/{id}/history` is made
+directly by the client and validated entirely by `firestore.rules`:
+
+- **Family**: created directly by the client; the rule requires
+  `createdBy == auth.uid` and `members == [auth.uid]`. The family
+  document's own auto-generated id *is* the invite code — share it
+  directly, there's no separate code or lookup query. Joining updates
+  `members` to append exactly the caller's own uid (checked field-by-field
+  by the rule) and nothing else.
+- **Tasks**: `title`, `description`, `createdBy`, `createdAt`, `assignees`
+  and `deadline` can never change after creation — the update rule only
+  allows a fixed set of mutable "status fields" (`status`,
+  `nextReminderAt`, `remindersSent`, `proposedDeadline`, `proposedBy`,
+  `effectiveDeadline`, `lastHistoryEventId`) to change, and only an
+  assignee may change them (the creator may additionally reopen a
+  completed task). Deleting a task is never allowed.
+- **History**: append-only (`update`/`delete` always denied), with
+  `byUid == auth.uid` and `at == request.time` enforced by the rule.
+- **Pairing**: a task write and its history entry are written in the same
+  `writeBatch` from the client, and the rules enforce that pairing using
+  `getAfter()`/`existsAfter()` — a task document's `lastHistoryEventId`
+  must point at a history document created in the *same* batch with a
+  matching `byUid`/`at`, and that history document's own rule requires the
+  task's after-state to point back at it. A task change with no
+  accompanying history entry (or vice versa) is rejected outright.
+- The only paths a client ever writes without this pairing are its own
   `users/{uid}` profile and `users/{uid}/devices/{deviceId}` (FCM token
   registration) — neither affects task evidence.
+
+See `web/src/context/FamilyContext.tsx` and `TaskContext.tsx` for the
+client side of every one of these writes, and `firestore.rules` for what
+actually enforces them.
+
+## Why no Cloud Functions (and no automated reminders)
+
+Cloud Functions, Cloud Scheduler and server-side FCM sending all require
+Firebase's paid Blaze plan (even though typical usage for a small family
+app would stay within the perpetual free tier, Blaze still requires
+attaching a billing account, which this project avoids entirely).
+Everything that previously ran as a Cloud Function now runs as a direct,
+rules-validated client write instead.
+
+**Consequence: there is currently no way to actually send the 5h/1h/
+30min/10min push reminders.** Sending a push notification to *another
+user's* device requires a server holding FCM credentials — there's no
+secure way to do that from the browser. The schema still has
+`nextReminderAt`/`remindersSent` fields (computed client-side at task
+creation, in `web/src/lib/offsets.ts`) so it's ready if a server
+component is added later, but nothing currently advances them or sends
+anything. `functions/` is kept in the repo for that future option but is
+not part of the deploy.
 
 ## Project layout
 
 ```
-firebase.json          Hosting/Firestore/Functions/Emulator config
-firestore.rules         Security rules (read-only for families/tasks/history)
+firebase.json          Hosting/Firestore/Emulator config
+firestore.rules         Security rules enforcing the model above
 firestore.indexes.json  Firestore indexes
-web/                    Frontend PWA
-functions/              Cloud Functions
+web/                    Frontend PWA (all writes happen here)
+functions/              Unused/undeployed — kept for a possible future Blaze upgrade
 ```
 
-## Push notifications
+## Push notification registration (no sending yet)
 
-Reminders fire 5h, 1h, 30min and 10min before a task's deadline via the
-`sendTaskReminders` scheduled function, sent to each assignee's registered
-device tokens (`users/{uid}/devices/{deviceId}`). To receive them in the
-browser:
+The app still registers each device's FCM token to
+`users/{uid}/devices/{deviceId}` via the "Включи известия" banner, since
+that's a direct, non-tamper-sensitive self-write. To test token
+registration:
 
-1. Generate a Web Push certificate under Firebase console -> Project
-   settings -> Cloud Messaging -> Web configuration, and put it in
+1. Generate a Web Push certificate under Firebase console → Project
+   settings → Cloud Messaging → Web configuration, and put it in
    `web/.env` as `VITE_FIREBASE_VAPID_KEY`.
 2. Push notifications require HTTPS (or `localhost`) and browser
-   permission, granted via the in-app "Включи известия" banner.
+   permission.
 
 ## Local setup
 
-1. Install the root tooling (Firebase CLI) and each workspace's deps:
+1. Install the web app's deps:
    ```
-   npm install
    npm --prefix web install
-   npm --prefix functions install
    ```
-2. Create a Firebase project and update `.firebaserc` with its project ID.
+2. Create a Firebase project (Spark/free plan) and update `.firebaserc`
+   with its project ID.
 3. Copy `web/.env.example` to `web/.env` and fill in your Firebase web app
    config (from Firebase console → Project settings → General). `.env` is
    gitignored — never commit real keys.
-4. Enable Email/Password sign-in under Authentication → Sign-in method.
+4. Enable Email/Password sign-in under Authentication → Sign-in method,
+   and create the Firestore database.
 5. The Firestore/Auth emulators require a JDK (11+) on PATH. Then run:
    ```
    npm run emulators
@@ -71,11 +114,13 @@ browser:
 ## Deploying
 
 ```
-npm run deploy
+npx firebase login
+npm --prefix web run build
+npx firebase deploy --only hosting,firestore:rules
 ```
 
-This builds the web app and functions, then runs `firebase deploy`
-(Hosting + Firestore rules/indexes + Functions).
+Nothing under `functions/` is deployed — `--only hosting,firestore:rules`
+is the full deploy.
 
 ## UI language
 

@@ -13,7 +13,15 @@ export default function DashboardScreen() {
   const { tasks, loading, error } = useTasks();
   const [creating, setCreating] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
+
+  async function copyFamilyId() {
+    if (!family) return;
+    await navigator.clipboard.writeText(family.id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -22,9 +30,15 @@ export default function DashboardScreen() {
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
         <div>
           <h1 className="text-lg font-semibold text-slate-900">{family?.name}</h1>
-          <p className="text-xs text-slate-500">
-            Код за покана: <span className="font-mono tracking-widest">{family?.inviteCode}</span>
-          </p>
+          <button
+            type="button"
+            onClick={() => void copyFamilyId()}
+            className="text-xs text-slate-500 hover:underline"
+            title="Копирай ID на семейството за покана на друг член"
+          >
+            ID на семейството: <span className="font-mono">{family?.id}</span>
+            {copied ? " ✓ копирано" : " (копирай)"}
+          </button>
         </div>
         <button
           type="button"

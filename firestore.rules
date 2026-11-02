@@ -7,13 +7,32 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Single-document membership check (used by `get`/`create`/`update`
+    // requests, never by a `list` query — get()-based rules can't be
+    // validated against a query's filters, see the comment on
+    // /families/{familyId} below).
     function isFamilyMember(familyId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/families/$(familyId))
         && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members;
     }
 
-    // User profile: only the owner can read/write their own profile.
+    // Firestore rules only allow top-level function/match declarations
+    // (no top-level const), so these are functions instead.
+    function taskMutableFields() {
+      return [
+        'status', 'nextReminderAt', 'remindersSent',
+        'proposedDeadline', 'proposedBy', 'effectiveDeadline',
+        'lastHistoryEventId'
+      ];
+    }
+    function historyEventTypes() {
+      return ['created', 'seen', 'accepted', 'status_changed', 'deadline_proposed', 'deadline_accepted'];
+    }
+
+    // User profile: only the owner can read/write their own profile,
+    // including the familyId pointer used to find their family (see
+    // /families/{familyId} below for why this replaced a list query).
     match /users/{uid} {
       allow read: if isSignedIn() && request.auth.uid == uid;
       allow create, update: if isSignedIn() && request.auth.uid == uid;
@@ -25,31 +44,88 @@ service cloud.firestore {
       }
     }
 
-    // Families: created/joined only through Cloud Functions (Admin SDK),
-    // so invite codes and membership can be validated server-side.
     match /families/{familyId} {
-      // Read directly off resource.data rather than isFamilyMember()'s
-      // self-referential get() — Firestore can only validate a list/query
-      // request against a rule it can tie to the query itself, and a
-      // get()-based rule isn't, so any list query against this collection
-      // (e.g. an array-contains membership lookup) would be denied outright
-      // even though every per-document check would pass. The client reads
-      // this doc by a known id (via users/{uid}.familyId) rather than
-      // querying, but this form keeps that read valid under either access
-      // pattern.
+      // The family document's own auto-generated id is the "invite code"
+      // (no separate inviteCode field, no lookup query). Clients only ever
+      // `get` a family by a known id (from users/{uid}.familyId, or a code
+      // someone shared) — never `list` the collection, so this rule only
+      // has to hold for single-document reads. It's still written against
+      // resource.data directly (not a self-referential get()) so it would
+      // also survive being used in a query, since Firestore can only grant
+      // a list/query request when the rule is provably tied to the
+      // query's own filter — a get()-based rule isn't, and gets denied
+      // outright even when every individual document would pass.
       allow read: if isSignedIn() && request.auth.uid in resource.data.members;
-      allow write: if false;
 
-      // Tasks: create/update/delete only through Cloud Functions so every
-      // mutation is paired with a server-timestamped history entry.
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.members == [request.auth.uid]
+        && request.resource.data.memberNames.keys().hasOnly([request.auth.uid])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0;
+
+      // Join: add exactly the caller's own uid to members (and their own
+      // entry to memberNames), nothing else.
+      allow update: if isSignedIn()
+        && !(request.auth.uid in resource.data.members)
+        && request.resource.data.members == resource.data.members.concat([request.auth.uid])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberNames'])
+        && request.resource.data.memberNames.diff(resource.data.memberNames).affectedKeys().hasOnly([request.auth.uid]);
+
+      allow delete: if false;
+
       match /tasks/{taskId} {
         allow read: if isFamilyMember(familyId);
-        allow write: if false;
 
-        // Append-only audit log. Never writable from the client.
+        allow create: if isSignedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.status == 'pending'
+          && request.resource.data.title is string && request.resource.data.title.size() > 0
+          && request.resource.data.assignees is list && request.resource.data.assignees.size() > 0
+          && request.resource.data.deadline is timestamp
+          && existsAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId))
+          && getAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId)).data.type == 'created'
+          && getAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId)).data.byUid == request.auth.uid
+          && getAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId)).data.at == request.time;
+
+        // Immutable once created except for the mutable "status fields";
+        // only an assignee may change them, except reopening a done task
+        // back to work, which only the creator may do. Every update must
+        // be paired, in the same batch, with a new history entry that
+        // points back at this exact write (see history/{eventId} below).
+        allow update: if isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(taskMutableFields())
+          && (
+            (request.auth.uid in resource.data.assignees)
+            || (request.auth.uid == resource.data.createdBy
+                && resource.data.status == 'done'
+                && request.resource.data.status != 'done')
+          )
+          && existsAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId))
+          && getAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId)).data.byUid == request.auth.uid
+          && getAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId)).data.at == request.time;
+
+        allow delete: if false;
+
+        // Append-only audit log. A history doc can only be created
+        // alongside (in the same batch as) the task write it documents —
+        // enforced from both sides: the task write above requires this
+        // doc to exist-after with matching byUid/at, and this rule
+        // requires the task's after-state to point back at this exact
+        // document id.
         match /history/{eventId} {
           allow read: if isFamilyMember(familyId);
-          allow write: if false;
+
+          allow create: if isSignedIn()
+            && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members
+            && request.resource.data.byUid == request.auth.uid
+            && request.resource.data.at == request.time
+            && request.resource.data.type in historyEventTypes()
+            && getAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)).data.lastHistoryEventId == eventId;
+
+          allow update, delete: if false;
         }
       }
     }

@@ -16,12 +16,19 @@ function getErrorMessage(err: unknown): string {
 export default function TaskDetailModal({ task, onClose }: { task: Task; onClose: () => void }) {
   const { user } = useAuth();
   const { family } = useFamily();
-  const { markSeen, acceptTask, completeTask, changeDeadline } = useTasks();
+  const {
+    markSeen,
+    acceptTask,
+    completeTask,
+    reopenTask,
+    proposeDeadline,
+    acceptDeadlineProposal,
+  } = useTasks();
   const { history, loading: historyLoading, error: historyError } = useTaskHistory(family?.id ?? "", task.id);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [editingDeadline, setEditingDeadline] = useState(false);
+  const [proposing, setProposing] = useState(false);
   const [deadlineInput, setDeadlineInput] = useState("");
 
   if (!family || !user) {
@@ -29,7 +36,9 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
   }
 
   const isAssignee = task.assignees.includes(user.uid);
+  const isCreator = task.createdBy === user.uid;
   const assigneeNames = task.assignees.map((uid) => family.memberNames[uid] ?? uid);
+  const operativeDeadline = task.effectiveDeadline ?? task.deadline;
 
   async function runAction(action: () => Promise<void>) {
     setError(null);
@@ -43,16 +52,16 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
     }
   }
 
-  function startEditDeadline() {
+  function startProposeDeadline() {
     const pad = (n: number) => String(n).padStart(2, "0");
-    const d = task.deadline.toDate();
+    const d = operativeDeadline.toDate();
     setDeadlineInput(
       `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`,
     );
-    setEditingDeadline(true);
+    setProposing(true);
   }
 
-  async function handleDeadlineSubmit(e: FormEvent) {
+  async function handleProposeSubmit(e: FormEvent) {
     e.preventDefault();
     const deadline = new Date(deadlineInput).getTime();
     if (!Number.isFinite(deadline)) {
@@ -60,8 +69,8 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
       return;
     }
     await runAction(async () => {
-      await changeDeadline(task.id, deadline);
-      setEditingDeadline(false);
+      await proposeDeadline(task.id, deadline);
+      setProposing(false);
     });
   }
 
@@ -81,17 +90,41 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
 
         <p className="mt-3 text-sm text-slate-500">Изпълнители: {assigneeNames.join(", ")}</p>
 
-        <div className="mt-2 flex items-center justify-between text-sm text-slate-500">
-          <span>Срок: {formatDateTime(task.deadline)}</span>
-          {task.status !== "done" && !editingDeadline && (
-            <button type="button" onClick={startEditDeadline} className="text-blue-600 hover:underline">
-              Промени
-            </button>
+        <div className="mt-2 text-sm text-slate-500">
+          <div className="flex items-center justify-between">
+            <span>Срок: {formatDateTime(operativeDeadline)}</span>
+            {isAssignee && task.status !== "done" && !task.proposedDeadline && !proposing && (
+              <button type="button" onClick={startProposeDeadline} className="text-blue-600 hover:underline">
+                Предложи нов срок
+              </button>
+            )}
+          </div>
+          {task.effectiveDeadline && (
+            <p className="text-xs text-slate-400">Първоначален срок: {formatDateTime(task.deadline)}</p>
           )}
         </div>
 
-        {editingDeadline && (
-          <form onSubmit={handleDeadlineSubmit} className="mt-2 flex items-center gap-2">
+        {task.proposedDeadline && (
+          <div className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">
+            <p>
+              Предложен нов срок: {formatDateTime(task.proposedDeadline)}
+              {task.proposedBy && <> от {family.memberNames[task.proposedBy] ?? task.proposedBy}</>}
+            </p>
+            {isAssignee && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => runAction(() => acceptDeadlineProposal(task.id))}
+                className="mt-1 rounded-lg bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+              >
+                Приеми новия срок
+              </button>
+            )}
+          </div>
+        )}
+
+        {proposing && (
+          <form onSubmit={handleProposeSubmit} className="mt-2 flex items-center gap-2">
             <input
               type="datetime-local"
               required
@@ -104,7 +137,7 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
               disabled={busy}
               className="rounded-lg bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
             >
-              Запази
+              Предложи
             </button>
           </form>
         )}
@@ -143,6 +176,19 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
                 Завърши
               </button>
             )}
+          </div>
+        )}
+
+        {(isAssignee || isCreator) && task.status === "done" && (
+          <div className="mt-4">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => runAction(() => reopenTask(task.id))}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              Отвори отново
+            </button>
           </div>
         )}
 
