@@ -57,6 +57,7 @@ export const createFamily = onCall<{ name: string }>(async (request) => {
   const displayName = await resolveDisplayName(uid);
   const db = getFirestore();
   const familyRef = db.collection("families").doc();
+  const userRef = db.collection("users").doc(uid);
 
   const family: FamilyDoc = {
     name,
@@ -67,7 +68,12 @@ export const createFamily = onCall<{ name: string }>(async (request) => {
     createdAt: FieldValue.serverTimestamp() as unknown as FamilyDoc["createdAt"],
   };
 
-  await familyRef.set(family);
+  // The client finds its family by reading users/{uid}.familyId rather than
+  // list-querying the families collection, so this must be set here too.
+  const batch = db.batch();
+  batch.set(familyRef, family);
+  batch.set(userRef, { familyId: familyRef.id }, { merge: true });
+  await batch.commit();
 
   return { familyId: familyRef.id, inviteCode, name };
 });
@@ -92,14 +98,20 @@ export const joinFamily = onCall<{ inviteCode: string }>(async (request) => {
 
   const familyDoc = matches.docs[0];
   const family = familyDoc.data() as FamilyDoc;
+  const userRef = db.collection("users").doc(uid);
 
+  const batch = db.batch();
   if (!family.members.includes(uid)) {
     const displayName = await resolveDisplayName(uid);
-    await familyDoc.ref.update({
+    batch.update(familyDoc.ref, {
       members: FieldValue.arrayUnion(uid),
       [`memberNames.${uid}`]: displayName,
     });
   }
+  // Same as createFamily: the client discovers its family via
+  // users/{uid}.familyId, so a join must set it too.
+  batch.set(userRef, { familyId: familyDoc.id }, { merge: true });
+  await batch.commit();
 
   return { familyId: familyDoc.id, inviteCode: family.inviteCode, name: family.name };
 });

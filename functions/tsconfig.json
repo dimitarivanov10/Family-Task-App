@@ -6,7 +6,6 @@
     "moduleResolution": "node",
     "outDir": "lib",
     "rootDir": "src",
-    "ignoreDeprecations": "6.0",
     "sourceMap": true,
     "strict": true,
     "noUnusedLocals": true,

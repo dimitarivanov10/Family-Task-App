@@ -28,7 +28,16 @@ service cloud.firestore {
     // Families: created/joined only through Cloud Functions (Admin SDK),
     // so invite codes and membership can be validated server-side.
     match /families/{familyId} {
-      allow read: if isFamilyMember(familyId);
+      // Read directly off resource.data rather than isFamilyMember()'s
+      // self-referential get() — Firestore can only validate a list/query
+      // request against a rule it can tie to the query itself, and a
+      // get()-based rule isn't, so any list query against this collection
+      // (e.g. an array-contains membership lookup) would be denied outright
+      // even though every per-document check would pass. The client reads
+      // this doc by a known id (via users/{uid}.familyId) rather than
+      // querying, but this form keeps that read valid under either access
+      // pattern.
+      allow read: if isSignedIn() && request.auth.uid in resource.data.members;
       allow write: if false;
 
       // Tasks: create/update/delete only through Cloud Functions so every

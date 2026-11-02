@@ -5,7 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "../lib/firebase";
 import { useAuth } from "./AuthContext";
@@ -29,30 +29,58 @@ const FamilyContext = createContext<FamilyContextValue | undefined>(undefined);
 
 export function FamilyProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  // undefined = not yet read from users/{uid}; null = read, no family.
+  const [familyId, setFamilyId] = useState<string | null | undefined>(undefined);
   const [family, setFamily] = useState<Family | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Stage 1: find out which family (if any) this user belongs to by
+  // reading their own profile doc — never by listing /families, which
+  // Firestore can't validate against a get()-based membership rule (see
+  // firestore.rules) and denies outright regardless of the real result.
   useEffect(() => {
     if (!user) {
-      setFamily(null);
-      setLoading(false);
+      setFamilyId(null);
       setError(null);
       return;
     }
 
-    setLoading(true);
     setError(null);
-    const familiesQuery = query(
-      collection(db, "families"),
-      where("members", "array-contains", user.uid),
+    const unsubscribe = onSnapshot(
+      doc(db, "users", user.uid),
+      (snap) => {
+        const data = snap.data();
+        setFamilyId((data?.familyId as string | undefined) ?? null);
+      },
+      (err) => {
+        console.error("Грешка при зареждане на профила:", err);
+        setError("Неуспешно зареждане на профила. Моля, презаредете страницата.");
+        setLoading(false);
+      },
     );
 
+    return unsubscribe;
+  }, [user]);
+
+  // Stage 2: only once we know a familyId, subscribe to that single,
+  // known family document (a get, not a query — no list-validation issue).
+  useEffect(() => {
+    if (familyId === undefined) {
+      return; // stage 1 hasn't resolved yet
+    }
+
+    if (familyId === null) {
+      setFamily(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     const unsubscribe = onSnapshot(
-      familiesQuery,
-      (snapshot) => {
-        const first = snapshot.docs[0];
-        setFamily(first ? ({ id: first.id, ...first.data() } as Family) : null);
+      doc(db, "families", familyId),
+      (snap) => {
+        setFamily(snap.exists() ? ({ id: snap.id, ...snap.data() } as Family) : null);
         setLoading(false);
       },
       (err) => {
@@ -63,7 +91,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     );
 
     return unsubscribe;
-  }, [user]);
+  }, [familyId]);
 
   async function createFamily(name: string) {
     const callable = httpsCallable<{ name: string }, CreateFamilyResult>(functions, "createFamily");
