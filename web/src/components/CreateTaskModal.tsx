@@ -3,6 +3,9 @@ import { useFamily } from "../context/FamilyContext";
 import { useTasks } from "../context/TaskContext";
 import { getErrorMessage } from "../lib/errors";
 
+const FIELD_CLASS =
+  "mt-1 block w-full rounded-lg border border-edge bg-surface-2 px-3 py-2 text-ink placeholder:text-ink-faint shadow-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
+
 function defaultDeadlineInput(): string {
   const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
   d.setSeconds(0, 0);
@@ -57,13 +60,13 @@ export default function CreateTaskModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
-        <h2 className="text-lg font-semibold text-slate-900">Нова задача</h2>
+    <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/60 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-xl shadow-black/30 ring-1 ring-edge/60">
+        <h2 className="font-display text-lg font-semibold text-ink">Нова задача</h2>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <div>
-            <label htmlFor="title" className="block text-sm font-medium text-slate-700">
+            <label htmlFor="title" className="block text-sm font-medium text-ink-dim">
               Заглавие
             </label>
             <input
@@ -72,12 +75,12 @@ export default function CreateTaskModal({ onClose }: { onClose: () => void }) {
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={FIELD_CLASS}
             />
           </div>
 
           <div>
-            <label htmlFor="description" className="block text-sm font-medium text-slate-700">
+            <label htmlFor="description" className="block text-sm font-medium text-ink-dim">
               Описание
             </label>
             <textarea
@@ -85,20 +88,20 @@ export default function CreateTaskModal({ onClose }: { onClose: () => void }) {
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={FIELD_CLASS}
             />
           </div>
 
           <div>
-            <span className="block text-sm font-medium text-slate-700">Изпълнители</span>
+            <span className="block text-sm font-medium text-ink-dim">Изпълнители</span>
             <div className="mt-1 space-y-1">
               {members.map(([uid, name]) => (
-                <label key={uid} className="flex items-center gap-2 text-sm text-slate-700">
+                <label key={uid} className="flex items-center gap-2 text-sm text-ink">
                   <input
                     type="checkbox"
                     checked={assignees.includes(uid)}
                     onChange={() => toggleAssignee(uid)}
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    className="rounded border-edge bg-surface-2 text-accent focus:ring-accent"
                   />
                   {name}
                 </label>
@@ -107,7 +110,7 @@ export default function CreateTaskModal({ onClose }: { onClose: () => void }) {
           </div>
 
           <div>
-            <label htmlFor="deadline" className="block text-sm font-medium text-slate-700">
+            <label htmlFor="deadline" className="block text-sm font-medium text-ink-dim">
               Срок
             </label>
             <input
@@ -116,24 +119,24 @@ export default function CreateTaskModal({ onClose }: { onClose: () => void }) {
               required
               value={deadlineInput}
               onChange={(e) => setDeadlineInput(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={FIELD_CLASS}
             />
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-rose">{error}</p>}
 
           <div className="flex gap-2 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="flex-1 rounded-full border border-edge px-4 py-2 text-sm font-medium text-ink-dim hover:text-ink"
             >
               Отказ
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
+              className="flex-1 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-bg shadow-sm hover:bg-accent-strong disabled:opacity-60"
             >
               {submitting ? "Запазване…" : "Създай"}
             </button>

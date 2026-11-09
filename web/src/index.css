@@ -1,5 +1,32 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Onest", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Unbounded", "Onest", system-ui, sans-serif;
+
+  --color-bg: #0b2a4a;
+  --color-surface: #11385f;
+  --color-surface-2: #16436e;
+  --color-edge: #244f78;
+
+  --color-ink: #f3f6fa;
+  --color-ink-dim: #93adc8;
+  --color-ink-faint: #5d7a99;
+
+  --color-accent: #e8a33d;
+  --color-accent-strong: #cf8c28;
+  --color-accent-soft: #3a3322;
+
+  --color-mint: #39c2a0;
+  --color-mint-soft: #123a33;
+
+  --color-rose: #f2667a;
+  --color-rose-soft: #3a1f29;
+
+  --color-sky: #5ea8d8;
+  --color-sky-soft: #15314a;
+}
+
 html,
 body,
 #root {
@@ -7,5 +34,21 @@ body,
 }
 
 body {
-  background-color: #f8fafc;
+  background-color: var(--color-bg);
+  background-image: radial-gradient(
+    ellipse 900px 500px at 50% -10%,
+    color-mix(in srgb, var(--color-sky) 18%, transparent),
+    transparent 60%
+  );
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background-color: var(--color-accent);
+  color: var(--color-bg);
+}
+
+* {
+  scrollbar-color: var(--color-edge) transparent;
 }

@@ -8,21 +8,21 @@ import DashboardScreen from "./pages/DashboardScreen";
 
 function LoadingScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50">
-      <p className="text-sm text-slate-500">Зареждане…</p>
+    <div className="flex min-h-screen items-center justify-center">
+      <p className="text-sm text-ink-dim">Зареждане…</p>
     </div>
   );
 }
 
 function ErrorScreen({ message }: { message: string }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+    <div className="flex min-h-screen items-center justify-center px-4">
       <div className="max-w-sm text-center">
-        <p className="text-sm text-red-600">{message}</p>
+        <p className="text-sm text-rose">{message}</p>
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+          className="mt-4 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-bg shadow-sm hover:bg-accent-strong"
         >
           Презареди
         </button>

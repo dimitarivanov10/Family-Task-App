@@ -2,6 +2,9 @@ import { useState, type FormEvent } from "react";
 import { useFamily } from "../context/FamilyContext";
 import { getErrorMessage } from "../lib/errors";
 
+const FIELD_CLASS =
+  "mt-1 block w-full rounded-lg border border-edge bg-surface-2 px-3 py-2 text-ink placeholder:text-ink-faint shadow-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
+
 export default function CreateOrJoinFamilyForm({ onDone }: { onDone?: () => void }) {
   const { createFamily, joinFamily } = useFamily();
   const [mode, setMode] = useState<"create" | "join">("create");
@@ -32,12 +35,12 @@ export default function CreateOrJoinFamilyForm({ onDone }: { onDone?: () => void
 
   return (
     <div>
-      <div className="flex rounded-lg bg-slate-100 p-1">
+      <div className="flex rounded-lg bg-surface-2 p-1">
         <button
           type="button"
           onClick={() => setMode("create")}
           className={`flex-1 rounded-md py-1.5 text-sm font-medium transition ${
-            mode === "create" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"
+            mode === "create" ? "bg-accent text-bg" : "text-ink-dim"
           }`}
         >
           Ново семейство
@@ -46,7 +49,7 @@ export default function CreateOrJoinFamilyForm({ onDone }: { onDone?: () => void
           type="button"
           onClick={() => setMode("join")}
           className={`flex-1 rounded-md py-1.5 text-sm font-medium transition ${
-            mode === "join" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"
+            mode === "join" ? "bg-accent text-bg" : "text-ink-dim"
           }`}
         >
           Присъединяване
@@ -56,7 +59,7 @@ export default function CreateOrJoinFamilyForm({ onDone }: { onDone?: () => void
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         {mode === "create" ? (
           <div>
-            <label htmlFor="familyName" className="block text-sm font-medium text-slate-700">
+            <label htmlFor="familyName" className="block text-sm font-medium text-ink-dim">
               Име на семейството
             </label>
             <input
@@ -66,12 +69,12 @@ export default function CreateOrJoinFamilyForm({ onDone }: { onDone?: () => void
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="напр. Семейство Иванови"
-              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={FIELD_CLASS}
             />
           </div>
         ) : (
           <div>
-            <label htmlFor="familyIdInput" className="block text-sm font-medium text-slate-700">
+            <label htmlFor="familyIdInput" className="block text-sm font-medium text-ink-dim">
               ID на семейството
             </label>
             <input
@@ -81,17 +84,17 @@ export default function CreateOrJoinFamilyForm({ onDone }: { onDone?: () => void
               value={familyIdInput}
               onChange={(e) => setFamilyIdInput(e.target.value.trim())}
               placeholder="Поискайте го от друг член на семейството"
-              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`${FIELD_CLASS} font-mono text-sm`}
             />
           </div>
         )}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-rose">{error}</p>}
 
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
+          className="w-full rounded-full bg-accent px-4 py-2 font-semibold text-bg shadow-sm transition hover:bg-accent-strong disabled:opacity-60"
         >
           {submitting ? "Моля, изчакайте…" : mode === "create" ? "Създай семейство" : "Присъедини се"}
         </button>
