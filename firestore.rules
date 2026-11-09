@@ -31,8 +31,8 @@ service cloud.firestore {
     }
 
     // User profile: only the owner can read/write their own profile,
-    // including the familyId pointer used to find their family (see
-    // /families/{familyId} below for why this replaced a list query).
+    // including the familyIds pointer list used to find their families
+    // (see /families/{familyId} below for why this replaced a list query).
     match /users/{uid} {
       allow read: if isSignedIn() && request.auth.uid == uid;
       allow create, update: if isSignedIn() && request.auth.uid == uid;
@@ -47,7 +47,7 @@ service cloud.firestore {
     match /families/{familyId} {
       // The family document's own auto-generated id is the "invite code"
       // (no separate inviteCode field, no lookup query). Clients only ever
-      // `get` a family by a known id (from users/{uid}.familyId, or a code
+      // `get` a family by a known id (from users/{uid}.familyIds, or a code
       // someone shared) — never `list` the collection, so this rule only
       // has to hold for single-document reads. It's still written against
       // resource.data directly (not a self-referential get()) so it would
@@ -71,6 +71,15 @@ service cloud.firestore {
         && request.resource.data.members == resource.data.members.concat([request.auth.uid])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberNames'])
         && request.resource.data.memberNames.diff(resource.data.memberNames).affectedKeys().hasOnly([request.auth.uid]);
+
+      // Leave: remove exactly the caller's own uid from members, nothing
+      // else. memberNames is left untouched so old tasks/history still
+      // show a former member's name instead of a bare uid.
+      allow update: if isSignedIn()
+        && (request.auth.uid in resource.data.members)
+        && !(request.auth.uid in request.resource.data.members)
+        && request.resource.data.members == resource.data.members.removeAll([request.auth.uid])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']);
 
       allow delete: if false;
 

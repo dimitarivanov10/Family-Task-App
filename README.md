@@ -22,7 +22,12 @@ directly by the client and validated entirely by `firestore.rules`:
   document's own auto-generated id *is* the invite code — share it
   directly, there's no separate code or lookup query. Joining updates
   `members` to append exactly the caller's own uid (checked field-by-field
-  by the rule) and nothing else.
+  by the rule) and nothing else; leaving removes exactly the caller's own
+  uid and nothing else (`memberNames` is never removed, so former
+  members still show up by name in old tasks/history instead of a bare
+  uid). A user can belong to multiple families at once — `users/{uid}`
+  stores `familyIds: string[]`, and the dashboard has a switcher when
+  there's more than one.
 - **Tasks**: `title`, `description`, `createdBy`, `createdAt`, `assignees`
   and `deadline` can never change after creation — the update rule only
   allows a fixed set of mutable "status fields" (`status`,
@@ -85,9 +90,15 @@ registration:
 
 1. Generate a Web Push certificate under Firebase console → Project
    settings → Cloud Messaging → Web configuration, and put it in
-   `web/.env` as `VITE_FIREBASE_VAPID_KEY`.
+   `web/.env` as `VITE_FIREBASE_VAPID_KEY`. Without this set,
+   `enablePushNotifications()` throws immediately — registration can't
+   work at all without it.
 2. Push notifications require HTTPS (or `localhost`) and browser
    permission.
+3. **iOS only delivers web push to a PWA added to the home screen** —
+   never to a tab open in regular Safari, even with permission granted.
+   The in-app banner detects this and shows install instructions instead
+   of a non-functional "Включи" button.
 
 ## Local setup
 

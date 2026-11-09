@@ -59,7 +59,7 @@ function AppRouter() {
 }
 
 function FamilyRouter() {
-  const { family, loading: familyLoading, error: familyError } = useFamily();
+  const { families, loading: familyLoading, error: familyError } = useFamily();
   const familyTimedOut = useLoadingTimeout(familyLoading);
 
   if (familyError) {
@@ -74,7 +74,7 @@ function FamilyRouter() {
     );
   }
 
-  if (!family) {
+  if (families.length === 0) {
     return <FamilySetupScreen />;
   }
 

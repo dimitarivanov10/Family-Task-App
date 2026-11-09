@@ -52,13 +52,13 @@ function getErrorMessage(err: unknown): string {
 
 export function TaskProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const { family } = useFamily();
+  const { activeFamily } = useFamily();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!family) {
+    if (!activeFamily) {
       setTasks([]);
       setLoading(false);
       setError(null);
@@ -68,7 +68,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     const tasksQuery = query(
-      collection(db, "families", family.id, "tasks"),
+      collection(db, "families", activeFamily.id, "tasks"),
       orderBy("deadline", "asc"),
     );
 
@@ -86,7 +86,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     );
 
     return unsubscribe;
-  }, [family]);
+  }, [activeFamily]);
 
   // Every task write is paired, in the same batch, with a new history
   // entry — the rules require the task's lastHistoryEventId to point at
@@ -98,8 +98,8 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     historyType: HistoryEventType,
     historyMeta?: Record<string, unknown>,
   ) {
-    if (!family || !user) return;
-    const taskRef = doc(db, "families", family.id, "tasks", taskId);
+    if (!activeFamily || !user) return;
+    const taskRef = doc(db, "families", activeFamily.id, "tasks", taskId);
     const historyRef = doc(collection(taskRef, "history"));
 
     const batch = writeBatch(db);
@@ -127,7 +127,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   }
 
   async function createTask({ title, description, assignees, deadline }: CreateTaskArgs) {
-    if (!family || !user) return;
+    if (!activeFamily || !user) return;
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       throw new Error("Заглавието не може да е празно.");
@@ -139,7 +139,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       throw new Error("Срокът трябва да е в бъдещето.");
     }
 
-    const taskRef = doc(collection(db, "families", family.id, "tasks"));
+    const taskRef = doc(collection(db, "families", activeFamily.id, "tasks"));
     const historyRef = doc(collection(taskRef, "history"));
     const reminder = nextReminder(deadline, Date.now(), []);
 

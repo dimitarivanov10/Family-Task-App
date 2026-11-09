@@ -15,7 +15,7 @@ function getErrorMessage(err: unknown): string {
 
 export default function TaskDetailModal({ task, onClose }: { task: Task; onClose: () => void }) {
   const { user } = useAuth();
-  const { family } = useFamily();
+  const { activeFamily } = useFamily();
   const {
     markSeen,
     acceptTask,
@@ -24,20 +24,23 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
     proposeDeadline,
     acceptDeadlineProposal,
   } = useTasks();
-  const { history, loading: historyLoading, error: historyError } = useTaskHistory(family?.id ?? "", task.id);
+  const { history, loading: historyLoading, error: historyError } = useTaskHistory(
+    activeFamily?.id ?? "",
+    task.id,
+  );
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [proposing, setProposing] = useState(false);
   const [deadlineInput, setDeadlineInput] = useState("");
 
-  if (!family || !user) {
+  if (!activeFamily || !user) {
     return null;
   }
 
   const isAssignee = task.assignees.includes(user.uid);
   const isCreator = task.createdBy === user.uid;
-  const assigneeNames = task.assignees.map((uid) => family.memberNames[uid] ?? uid);
+  const assigneeNames = task.assignees.map((uid) => activeFamily.memberNames[uid] ?? uid);
   const operativeDeadline = task.effectiveDeadline ?? task.deadline;
 
   async function runAction(action: () => Promise<void>) {
@@ -108,7 +111,7 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
           <div className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">
             <p>
               Предложен нов срок: {formatDateTime(task.proposedDeadline)}
-              {task.proposedBy && <> от {family.memberNames[task.proposedBy] ?? task.proposedBy}</>}
+              {task.proposedBy && <> от {activeFamily.memberNames[task.proposedBy] ?? task.proposedBy}</>}
             </p>
             {isAssignee && (
               <button
@@ -193,20 +196,28 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
         )}
 
         <div className="mt-5 border-t border-slate-100 pt-4">
-          <h3 className="text-sm font-medium text-slate-700">История</h3>
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-sm font-medium text-slate-700">История</h3>
+            {!historyError && !historyLoading && history.length > 0 && (
+              <span className="text-xs text-slate-400">{history.length} събития</span>
+            )}
+          </div>
           {historyError && <p className="mt-2 text-xs text-red-600">{historyError}</p>}
           {!historyError && historyLoading && (
             <p className="mt-2 text-xs text-slate-400">Зареждане…</p>
           )}
           {!historyError && !historyLoading && (
-            <ul className="mt-2 space-y-1.5">
-              {history.map((event) => (
-                <li key={event.id} className="text-xs text-slate-500">
-                  <span className="font-medium text-slate-700">{HISTORY_LABELS[event.type]}</span>
-                  {" — "}
-                  {family.memberNames[event.byUid] ?? event.byUid} · {formatDateTime(event.at)}
-                </li>
-              ))}
+            <ul className="mt-2 max-h-48 space-y-1.5 overflow-y-auto pr-1">
+              {history
+                .slice()
+                .reverse()
+                .map((event) => (
+                  <li key={event.id} className="text-xs text-slate-500">
+                    <span className="font-medium text-slate-700">{HISTORY_LABELS[event.type]}</span>
+                    {" — "}
+                    {activeFamily.memberNames[event.byUid] ?? event.byUid} · {formatDateTime(event.at)}
+                  </li>
+                ))}
             </ul>
           )}
         </div>

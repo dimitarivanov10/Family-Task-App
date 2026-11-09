@@ -6,19 +6,21 @@ import TaskCard from "../components/TaskCard";
 import CreateTaskModal from "../components/CreateTaskModal";
 import TaskDetailModal from "../components/TaskDetailModal";
 import NotificationsBanner from "../components/NotificationsBanner";
+import FamilyManagerModal from "../components/FamilyManagerModal";
 
 export default function DashboardScreen() {
   const { user, signOut } = useAuth();
-  const { family } = useFamily();
+  const { families, activeFamily, selectFamily } = useFamily();
   const { tasks, loading, error } = useTasks();
   const [creating, setCreating] = useState(false);
+  const [managingFamilies, setManagingFamilies] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
 
   async function copyFamilyId() {
-    if (!family) return;
-    await navigator.clipboard.writeText(family.id);
+    if (!activeFamily) return;
+    await navigator.clipboard.writeText(activeFamily.id);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -29,16 +31,39 @@ export default function DashboardScreen() {
 
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">{family?.name}</h1>
-          <button
-            type="button"
-            onClick={() => void copyFamilyId()}
-            className="text-xs text-slate-500 hover:underline"
-            title="Копирай ID на семейството за покана на друг член"
-          >
-            ID на семейството: <span className="font-mono">{family?.id}</span>
-            {copied ? " ✓ копирано" : " (копирай)"}
-          </button>
+          {families.length > 1 ? (
+            <select
+              value={activeFamily?.id ?? ""}
+              onChange={(e) => selectFamily(e.target.value)}
+              className="text-lg font-semibold text-slate-900 focus:outline-none"
+            >
+              {families.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <h1 className="text-lg font-semibold text-slate-900">{activeFamily?.name}</h1>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void copyFamilyId()}
+              className="text-xs text-slate-500 hover:underline"
+              title="Копирай ID на семейството за покана на друг член"
+            >
+              ID: <span className="font-mono">{activeFamily?.id}</span>
+              {copied ? " ✓ копирано" : " (копирай)"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setManagingFamilies(true)}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              Управление на семейства
+            </button>
+          </div>
         </div>
         <button
           type="button"
@@ -74,7 +99,7 @@ export default function DashboardScreen() {
             <TaskCard
               key={task.id}
               task={task}
-              assigneeNames={task.assignees.map((uid) => family?.memberNames[uid] ?? uid)}
+              assigneeNames={task.assignees.map((uid) => activeFamily?.memberNames[uid] ?? uid)}
               onOpen={() => setSelectedTaskId(task.id)}
             />
           ))}
@@ -83,6 +108,7 @@ export default function DashboardScreen() {
 
       {creating && <CreateTaskModal onClose={() => setCreating(false)} />}
       {selectedTask && <TaskDetailModal task={selectedTask} onClose={() => setSelectedTaskId(null)} />}
+      {managingFamilies && <FamilyManagerModal onClose={() => setManagingFamilies(false)} />}
     </div>
   );
 }

@@ -17,7 +17,7 @@ function defaultDeadlineInput(): string {
 }
 
 export default function CreateTaskModal({ onClose }: { onClose: () => void }) {
-  const { family } = useFamily();
+  const { activeFamily } = useFamily();
   const { createTask } = useTasks();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -26,7 +26,11 @@ export default function CreateTaskModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const members = family ? Object.entries(family.memberNames) : [];
+  // Only current members can be assigned, not former members who still
+  // linger in memberNames for historical display elsewhere.
+  const members = activeFamily
+    ? activeFamily.members.map((uid) => [uid, activeFamily.memberNames[uid] ?? uid] as const)
+    : [];
 
   function toggleAssignee(uid: string) {
     setAssignees((prev) => (prev.includes(uid) ? prev.filter((a) => a !== uid) : [...prev, uid]));

@@ -13,7 +13,24 @@ function getOrCreateDeviceId(): string {
   return deviceId;
 }
 
+// iOS only delivers web push to a PWA added to the home screen — never to
+// a tab open in regular Safari, even with permission granted.
+export function isIosNonStandalone(): boolean {
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as unknown as { standalone?: boolean }).standalone === true;
+  return isIos && !isStandalone;
+}
+
 export async function enablePushNotifications(uid: string): Promise<"granted" | "denied" | "unsupported"> {
+  const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+  if (!vapidKey) {
+    throw new Error(
+      "Липсва VAPID ключ (VITE_FIREBASE_VAPID_KEY в .env) — известията не могат да се регистрират.",
+    );
+  }
+
   const messaging = await getMessagingInstance();
   if (!messaging) {
     return "unsupported";
@@ -26,7 +43,7 @@ export async function enablePushNotifications(uid: string): Promise<"granted" | 
 
   const registration = await navigator.serviceWorker.ready;
   const token = await getToken(messaging, {
-    vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
+    vapidKey,
     serviceWorkerRegistration: registration,
   });
 
