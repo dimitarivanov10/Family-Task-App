@@ -1,13 +1,7 @@
 import { useState } from "react";
 import { useFamily } from "../context/FamilyContext";
 import CreateOrJoinFamilyForm from "./CreateOrJoinFamilyForm";
-
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message;
-  }
-  return "Възникна неочаквана грешка.";
-}
+import { getErrorMessage } from "../lib/errors";
 
 export default function FamilyManagerModal({ onClose }: { onClose: () => void }) {
   const { families, activeFamily, selectFamily, leaveFamily } = useFamily();

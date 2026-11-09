@@ -1,13 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { enablePushNotifications, isIosNonStandalone } from "../lib/messaging";
-
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message;
-  }
-  return "Неуспешно включване на известията.";
-}
+import { getErrorMessage } from "../lib/errors";
 
 export default function NotificationsBanner() {
   const { user } = useAuth();

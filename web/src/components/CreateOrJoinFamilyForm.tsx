@@ -1,12 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useFamily } from "../context/FamilyContext";
-
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message;
-  }
-  return "Възникна неочаквана грешка.";
-}
+import { getErrorMessage } from "../lib/errors";
 
 export default function CreateOrJoinFamilyForm({ onDone }: { onDone?: () => void }) {
   const { createFamily, joinFamily } = useFamily();

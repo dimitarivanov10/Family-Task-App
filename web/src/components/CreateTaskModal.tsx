@@ -1,13 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useFamily } from "../context/FamilyContext";
 import { useTasks } from "../context/TaskContext";
-
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message;
-  }
-  return "Възникна неочаквана грешка.";
-}
+import { getErrorMessage } from "../lib/errors";
 
 function defaultDeadlineInput(): string {
   const d = new Date(Date.now() + 24 * 60 * 60 * 1000);

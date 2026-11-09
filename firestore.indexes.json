@@ -7,6 +7,22 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "nextReminderAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignees", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "deadline", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdBy", "order": "ASCENDING" },
+        { "fieldPath": "deadline", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

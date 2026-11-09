@@ -8,6 +8,7 @@ import {
 import { arrayRemove, arrayUnion, collection, doc, onSnapshot, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "./AuthContext";
+import { getErrorMessage } from "../lib/errors";
 import type { Family } from "../types";
 
 const ACTIVE_FAMILY_KEY = "familyTaskApp.activeFamilyId";
@@ -24,13 +25,6 @@ interface FamilyContextValue {
 }
 
 const FamilyContext = createContext<FamilyContextValue | undefined>(undefined);
-
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message;
-  }
-  return "Възникна неочаквана грешка.";
-}
 
 // A user's profile may still have the old single `familyId` field from
 // before multi-family support; fold it into the list so existing data

@@ -17,17 +17,40 @@ service cloud.firestore {
         && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members;
     }
 
+    // Used only for history reads, which list a fixed, already-known
+    // subcollection path (no query filter to correlate), so a get() on
+    // the fixed parent task is fine here the same way isFamilyMember's
+    // get() on the fixed parent family is fine for tasks.
+    function isTaskViewer(familyId, taskId) {
+      let task = get(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)).data;
+      return isFamilyMember(familyId)
+        && (request.auth.uid in task.assignees || request.auth.uid == task.createdBy);
+    }
+
+    // Verifies the task write this is attached to is paired, in the same
+    // batch, with a new history doc matching the caller and the server
+    // time — see the /history/{eventId} rule below for the other half.
+    function historyPairingValid(familyId, taskId) {
+      let historyId = request.resource.data.lastHistoryEventId;
+      let historyPath = /databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(historyId);
+      return existsAfter(historyPath)
+        && getAfter(historyPath).data.byUid == request.auth.uid
+        && getAfter(historyPath).data.at == request.time;
+    }
+
     // Firestore rules only allow top-level function/match declarations
     // (no top-level const), so these are functions instead.
-    function taskMutableFields() {
+    function taskStatusFields() {
       return [
         'status', 'nextReminderAt', 'remindersSent',
-        'proposedDeadline', 'proposedBy', 'effectiveDeadline',
-        'lastHistoryEventId'
+        'declineReason', 'declinedBy', 'lastHistoryEventId'
       ];
     }
     function historyEventTypes() {
-      return ['created', 'seen', 'accepted', 'status_changed', 'deadline_proposed', 'deadline_accepted'];
+      return [
+        'created', 'seen', 'accepted', 'status_changed', 'declined',
+        'deadline_proposed', 'deadline_accepted'
+      ];
     }
 
     // User profile: only the owner can read/write their own profile,
@@ -84,7 +107,12 @@ service cloud.firestore {
       allow delete: if false;
 
       match /tasks/{taskId} {
-        allow read: if isFamilyMember(familyId);
+        // Only the creator and the assignees can see a task at all —
+        // written against resource.data directly (no get()) so it stays
+        // valid for the client's list query, which filters with a
+        // matching OR of assignees-array-contains/createdBy-equals.
+        allow read: if isFamilyMember(familyId)
+          && (request.auth.uid in resource.data.assignees || request.auth.uid == resource.data.createdBy);
 
         allow create: if isSignedIn()
           && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members
@@ -94,38 +122,63 @@ service cloud.firestore {
           && request.resource.data.title is string && request.resource.data.title.size() > 0
           && request.resource.data.assignees is list && request.resource.data.assignees.size() > 0
           && request.resource.data.deadline is timestamp
-          && existsAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId))
-          && getAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId)).data.type == 'created'
-          && getAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId)).data.byUid == request.auth.uid
-          && getAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId)).data.at == request.time;
+          && historyPairingValid(familyId, taskId)
+          && getAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId)).data.type == 'created';
 
-        // Immutable once created except for the mutable "status fields";
-        // only an assignee may change them, except reopening a done task
-        // back to work, which only the creator may do. Every update must
-        // be paired, in the same batch, with a new history entry that
-        // points back at this exact write (see history/{eventId} below).
+        // Immutable once created except for a fixed set of mutable
+        // "status fields". An assignee may move the task through
+        // seen/accepted/done/declined; the creator may additionally
+        // reopen a done or declined task. Every update must be paired,
+        // in the same batch, with a new history entry pointing back at
+        // this exact write (see history/{eventId} below).
         allow update: if isSignedIn()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(taskMutableFields())
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(taskStatusFields())
           && (
             (request.auth.uid in resource.data.assignees)
             || (request.auth.uid == resource.data.createdBy
-                && resource.data.status == 'done'
-                && request.resource.data.status != 'done')
+                && resource.data.status in ['done', 'declined']
+                && !(request.resource.data.status in ['done', 'declined']))
           )
-          && existsAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId))
-          && getAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId)).data.byUid == request.auth.uid
-          && getAfter(/databases/$(database)/documents/families/$(familyId)/tasks/$(taskId)/history/$(request.resource.data.lastHistoryEventId)).data.at == request.time;
+          && historyPairingValid(familyId, taskId);
+
+        // Propose a new deadline: either the creator or an assignee may
+        // propose, but only while there's no proposal already pending,
+        // and the proposedBy must be the caller themself.
+        allow update: if isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['proposedDeadline', 'proposedBy', 'lastHistoryEventId'])
+          && (request.auth.uid in resource.data.assignees || request.auth.uid == resource.data.createdBy)
+          && resource.data.proposedDeadline == null
+          && request.resource.data.proposedBy == request.auth.uid
+          && !(resource.data.status in ['done', 'declined'])
+          && historyPairingValid(familyId, taskId);
+
+        // Accept a pending deadline proposal: only the other party may
+        // confirm it — never the proposer. If the creator proposed, an
+        // assignee must confirm; if an assignee proposed, the creator
+        // must confirm.
+        allow update: if isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['effectiveDeadline', 'proposedDeadline', 'proposedBy', 'lastHistoryEventId'])
+          && resource.data.proposedDeadline != null
+          && request.resource.data.effectiveDeadline == resource.data.proposedDeadline
+          && request.resource.data.proposedDeadline == null
+          && request.resource.data.proposedBy == null
+          && request.auth.uid != resource.data.proposedBy
+          && (
+            (resource.data.proposedBy == resource.data.createdBy && request.auth.uid in resource.data.assignees)
+            || (resource.data.proposedBy != resource.data.createdBy && request.auth.uid == resource.data.createdBy)
+          )
+          && historyPairingValid(familyId, taskId);
 
         allow delete: if false;
 
         // Append-only audit log. A history doc can only be created
         // alongside (in the same batch as) the task write it documents —
-        // enforced from both sides: the task write above requires this
-        // doc to exist-after with matching byUid/at, and this rule
+        // enforced from both sides: the task write rules above require
+        // this doc to exist-after with matching byUid/at, and this rule
         // requires the task's after-state to point back at this exact
         // document id.
         match /history/{eventId} {
-          allow read: if isFamilyMember(familyId);
+          allow read: if isTaskViewer(familyId, taskId);
 
           allow create: if isSignedIn()
             && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members

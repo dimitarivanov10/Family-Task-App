@@ -1,6 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 
-export type TaskStatus = "pending" | "seen" | "accepted" | "done";
+export type TaskStatus = "pending" | "seen" | "accepted" | "done" | "declined";
 
 export interface Family {
   id: string;
@@ -25,6 +25,8 @@ export interface Task {
   proposedDeadline: Timestamp | null;
   proposedBy: string | null;
   effectiveDeadline: Timestamp | null;
+  declineReason: string | null;
+  declinedBy: string | null;
   lastHistoryEventId: string;
 }
 
@@ -33,6 +35,7 @@ export type HistoryEventType =
   | "seen"
   | "accepted"
   | "status_changed"
+  | "declined"
   | "deadline_proposed"
   | "deadline_accepted";
 

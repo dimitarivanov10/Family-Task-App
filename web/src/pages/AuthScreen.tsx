@@ -1,12 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../context/AuthContext";
-
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message;
-  }
-  return "Възникна неочаквана грешка.";
-}
+import { getErrorMessage } from "../lib/errors";
 
 export default function AuthScreen() {
   const { signIn, signUp } = useAuth();

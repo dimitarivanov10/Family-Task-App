@@ -29,12 +29,18 @@ directly by the client and validated entirely by `firestore.rules`:
   stores `familyIds: string[]`, and the dashboard has a switcher when
   there's more than one.
 - **Tasks**: `title`, `description`, `createdBy`, `createdAt`, `assignees`
-  and `deadline` can never change after creation — the update rule only
-  allows a fixed set of mutable "status fields" (`status`,
-  `nextReminderAt`, `remindersSent`, `proposedDeadline`, `proposedBy`,
-  `effectiveDeadline`, `lastHistoryEventId`) to change, and only an
-  assignee may change them (the creator may additionally reopen a
-  completed task). Deleting a task is never allowed.
+  and `deadline` can never change after creation. Only the creator and
+  the assignees can even read a task (the list query filters with
+  `where(assignees array-contains uid) OR where(createdBy == uid)`,
+  matching the read rule exactly). The status lifecycle fields
+  (`status`, `nextReminderAt`, `remindersSent`, `declineReason`,
+  `declinedBy`, `lastHistoryEventId`) can only be changed by an assignee
+  (seen/accepted/done/declined), or by the creator to reopen a done or
+  declined task. Deadline renegotiation is separate and stricter: either
+  party may *propose* (`proposedDeadline`/`proposedBy`), but only the
+  *other* party may confirm it into `effectiveDeadline` — the rule
+  explicitly rejects the proposer trying to confirm their own proposal.
+  Deleting a task is never allowed.
 - **History**: append-only (`update`/`delete` always denied), with
   `byUid == auth.uid` and `at == request.time` enforced by the rule.
 - **Pairing**: a task write and its history entry are written in the same
@@ -127,11 +133,15 @@ registration:
 ```
 npx firebase login
 npm --prefix web run build
-npx firebase deploy --only hosting,firestore:rules
+npx firebase deploy --only "hosting,firestore:rules,firestore:indexes"
 ```
 
-Nothing under `functions/` is deployed — `--only hosting,firestore:rules`
-is the full deploy.
+(In PowerShell, the comma-separated `--only` list must be quoted or it
+gets split into separate, unrecognized arguments.)
+
+Nothing under `functions/` is deployed — the above is the full deploy.
+`firestore:indexes` matters here specifically because the per-user task
+list query needs the composite indexes in `firestore.indexes.json`.
 
 ## UI language
 

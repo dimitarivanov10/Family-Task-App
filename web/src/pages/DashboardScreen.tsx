@@ -7,6 +7,14 @@ import CreateTaskModal from "../components/CreateTaskModal";
 import TaskDetailModal from "../components/TaskDetailModal";
 import NotificationsBanner from "../components/NotificationsBanner";
 import FamilyManagerModal from "../components/FamilyManagerModal";
+import type { Task } from "../types";
+
+const TASK_GROUPS: { key: string; label: string; match: (t: Task) => boolean }[] = [
+  { key: "new", label: "Нови", match: (t) => t.status === "pending" },
+  { key: "soon", label: "Изтичащи скоро", match: (t) => t.status === "seen" || t.status === "accepted" },
+  { key: "done", label: "Завършени", match: (t) => t.status === "done" },
+  { key: "declined", label: "Отказани", match: (t) => t.status === "declined" },
+];
 
 export default function DashboardScreen() {
   const { user, signOut } = useAuth();
@@ -94,16 +102,29 @@ export default function DashboardScreen() {
           <p className="text-sm text-slate-500">Няма задачи все още.</p>
         )}
 
-        <div className="space-y-2">
-          {tasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              assigneeNames={task.assignees.map((uid) => activeFamily?.memberNames[uid] ?? uid)}
-              onOpen={() => setSelectedTaskId(task.id)}
-            />
-          ))}
-        </div>
+        {!error &&
+          !loading &&
+          TASK_GROUPS.map(({ key, label, match }) => {
+            const groupTasks = tasks.filter(match);
+            if (groupTasks.length === 0) return null;
+            return (
+              <section key={key} className="mb-5">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  {label} ({groupTasks.length})
+                </h3>
+                <div className="space-y-2">
+                  {groupTasks.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      assigneeNames={task.assignees.map((uid) => activeFamily?.memberNames[uid] ?? uid)}
+                      onOpen={() => setSelectedTaskId(task.id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
       </main>
 
       {creating && <CreateTaskModal onClose={() => setCreating(false)} />}

@@ -1,17 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useFamily } from "../context/FamilyContext";
 import { useTasks } from "../context/TaskContext";
 import { useTaskHistory } from "../hooks/useTaskHistory";
+import { getErrorMessage } from "../lib/errors";
 import { formatDateTime, HISTORY_LABELS, STATUS_BADGE_CLASSES, STATUS_LABELS } from "../lib/format";
 import type { Task } from "../types";
-
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message;
-  }
-  return "Възникна неочаквана грешка.";
-}
 
 export default function TaskDetailModal({ task, onClose }: { task: Task; onClose: () => void }) {
   const { user } = useAuth();
@@ -20,6 +14,7 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
     markSeen,
     acceptTask,
     completeTask,
+    declineTask,
     reopenTask,
     proposeDeadline,
     acceptDeadlineProposal,
@@ -33,15 +28,36 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
   const [busy, setBusy] = useState(false);
   const [proposing, setProposing] = useState(false);
   const [deadlineInput, setDeadlineInput] = useState("");
+  const [declining, setDeclining] = useState(false);
+  const [declineReasonInput, setDeclineReasonInput] = useState("");
+
+  const isAssignee = !!user && task.assignees.includes(user.uid);
+
+  // "Видяна" is never a button — it's set the first time an assignee
+  // opens the task. Self-limiting: once status moves past "pending" this
+  // condition is false and it won't fire again.
+  useEffect(() => {
+    if (isAssignee && task.status === "pending") {
+      void markSeen(task.id).catch((err) => setError(getErrorMessage(err)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, task.status, isAssignee]);
 
   if (!activeFamily || !user) {
     return null;
   }
 
-  const isAssignee = task.assignees.includes(user.uid);
   const isCreator = task.createdBy === user.uid;
+  const isOpen = task.status !== "done" && task.status !== "declined";
   const assigneeNames = task.assignees.map((uid) => activeFamily.memberNames[uid] ?? uid);
   const operativeDeadline = task.effectiveDeadline ?? task.deadline;
+
+  // Only the other party may confirm a deadline proposal — mirrors the
+  // same check enforced server-side in TaskContext/firestore.rules.
+  const canAcceptProposal =
+    !!task.proposedBy &&
+    task.proposedBy !== user.uid &&
+    (task.proposedBy === task.createdBy ? isAssignee : isCreator);
 
   async function runAction(action: () => Promise<void>) {
     setError(null);
@@ -77,6 +93,15 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
     });
   }
 
+  async function handleDeclineSubmit(e: FormEvent) {
+    e.preventDefault();
+    await runAction(async () => {
+      await declineTask(task.id, declineReasonInput);
+      setDeclining(false);
+      setDeclineReasonInput("");
+    });
+  }
+
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
@@ -93,10 +118,17 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
 
         <p className="mt-3 text-sm text-slate-500">Изпълнители: {assigneeNames.join(", ")}</p>
 
+        {task.status === "declined" && (
+          <div className="mt-2 rounded-lg bg-red-50 p-2 text-sm text-red-900">
+            Отказана от {activeFamily.memberNames[task.declinedBy ?? ""] ?? task.declinedBy}
+            {task.declineReason && <> — {task.declineReason}</>}
+          </div>
+        )}
+
         <div className="mt-2 text-sm text-slate-500">
           <div className="flex items-center justify-between">
             <span>Срок: {formatDateTime(operativeDeadline)}</span>
-            {isAssignee && task.status !== "done" && !task.proposedDeadline && !proposing && (
+            {isOpen && (isAssignee || isCreator) && !task.proposedDeadline && !proposing && (
               <button type="button" onClick={startProposeDeadline} className="text-blue-600 hover:underline">
                 Предложи нов срок
               </button>
@@ -113,7 +145,7 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
               Предложен нов срок: {formatDateTime(task.proposedDeadline)}
               {task.proposedBy && <> от {activeFamily.memberNames[task.proposedBy] ?? task.proposedBy}</>}
             </p>
-            {isAssignee && (
+            {canAcceptProposal ? (
               <button
                 type="button"
                 disabled={busy}
@@ -122,6 +154,10 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
               >
                 Приеми новия срок
               </button>
+            ) : (
+              task.proposedBy === user.uid && (
+                <p className="mt-1 text-xs text-amber-700">Изчаква се потвърждение от другата страна.</p>
+              )
             )}
           </div>
         )}
@@ -147,18 +183,8 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
 
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
 
-        {isAssignee && task.status !== "done" && (
+        {isAssignee && isOpen && (
           <div className="mt-4 flex flex-wrap gap-2">
-            {task.status === "pending" && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => runAction(() => markSeen(task.id))}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-              >
-                Маркирай като видяна
-              </button>
-            )}
             {task.status !== "accepted" && (
               <button
                 type="button"
@@ -179,10 +205,49 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
                 Завърши
               </button>
             )}
+            {!declining && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setDeclining(true)}
+                className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
+              >
+                Откажи
+              </button>
+            )}
           </div>
         )}
 
-        {(isAssignee || isCreator) && task.status === "done" && (
+        {declining && (
+          <form onSubmit={handleDeclineSubmit} className="mt-2 space-y-2">
+            <input
+              type="text"
+              required
+              value={declineReasonInput}
+              onChange={(e) => setDeclineReasonInput(e.target.value)}
+              placeholder="Причина за отказа"
+              className="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDeclining(false)}
+                className="flex-1 rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Отказ
+              </button>
+              <button
+                type="submit"
+                disabled={busy}
+                className="flex-1 rounded-lg bg-red-600 px-3 py-1 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                Потвърди отказа
+              </button>
+            </div>
+          </form>
+        )}
+
+        {(isAssignee || isCreator) && !isOpen && (
           <div className="mt-4">
             <button
               type="button"

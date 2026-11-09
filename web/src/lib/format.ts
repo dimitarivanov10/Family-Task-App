@@ -10,6 +10,7 @@ export const STATUS_LABELS: Record<string, string> = {
   seen: "Видяна",
   accepted: "Приета",
   done: "Завършена",
+  declined: "Отказана",
 };
 
 export const STATUS_BADGE_CLASSES: Record<string, string> = {
@@ -17,6 +18,7 @@ export const STATUS_BADGE_CLASSES: Record<string, string> = {
   seen: "bg-amber-100 text-amber-800",
   accepted: "bg-blue-100 text-blue-800",
   done: "bg-green-100 text-green-800",
+  declined: "bg-red-100 text-red-800",
 };
 
 export const HISTORY_LABELS: Record<string, string> = {
@@ -24,6 +26,7 @@ export const HISTORY_LABELS: Record<string, string> = {
   seen: "Видяна",
   accepted: "Приета",
   status_changed: "Промяна на статуса",
+  declined: "Отказана",
   deadline_proposed: "Предложен нов срок",
   deadline_accepted: "Приет нов срок",
 };
