@@ -7,12 +7,16 @@ import CreateTaskModal from "../components/CreateTaskModal";
 import TaskDetailModal from "../components/TaskDetailModal";
 import NotificationsBanner from "../components/NotificationsBanner";
 import FamilyManagerModal from "../components/FamilyManagerModal";
+import TaskHistoryModal from "../components/TaskHistoryModal";
 import type { Task } from "../types";
 
+// Active board only — "archived" and "cancelled" tasks have no group
+// here at all, they're only reachable through the История view, which
+// shows every task regardless of status as a personal record.
 const TASK_GROUPS: { key: string; label: string; match: (t: Task) => boolean }[] = [
   { key: "new", label: "Нови", match: (t) => t.status === "pending" },
   { key: "soon", label: "Изтичащи скоро", match: (t) => t.status === "seen" || t.status === "accepted" },
-  { key: "done", label: "Завършени", match: (t) => t.status === "done" },
+  { key: "done", label: "Завършени", match: (t) => t.status === "done" || t.status === "verified" },
   { key: "declined", label: "Отказани", match: (t) => t.status === "declined" },
 ];
 
@@ -43,12 +47,27 @@ function CopyIcon() {
   );
 }
 
+function HistoryIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+      <path
+        d="M10 5.5V10l3 2M17 10a7 7 0 1 1-2.05-4.95M17 3v4h-4"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export default function DashboardScreen() {
   const { user, signOut } = useAuth();
   const { families, activeFamily, selectFamily } = useFamily();
   const { tasks, loading, error } = useTasks();
   const [creating, setCreating] = useState(false);
   const [managingFamilies, setManagingFamilies] = useState(false);
+  const [viewingHistory, setViewingHistory] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
@@ -112,6 +131,14 @@ export default function DashboardScreen() {
             <UsersIcon />
             Управление на семейства
           </button>
+          <button
+            type="button"
+            onClick={() => setViewingHistory(true)}
+            className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-xs font-medium text-ink-dim ring-1 ring-edge transition hover:text-ink"
+          >
+            <HistoryIcon />
+            История
+          </button>
         </div>
       </header>
 
@@ -163,6 +190,16 @@ export default function DashboardScreen() {
       {creating && <CreateTaskModal onClose={() => setCreating(false)} />}
       {selectedTask && <TaskDetailModal task={selectedTask} onClose={() => setSelectedTaskId(null)} />}
       {managingFamilies && <FamilyManagerModal onClose={() => setManagingFamilies(false)} />}
+      {viewingHistory && (
+        <TaskHistoryModal
+          tasks={tasks}
+          onClose={() => setViewingHistory(false)}
+          onOpenTask={(taskId) => {
+            setViewingHistory(false);
+            setSelectedTaskId(taskId);
+          }}
+        />
+      )}
     </div>
   );
 }

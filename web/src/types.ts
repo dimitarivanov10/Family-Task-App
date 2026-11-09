@@ -1,6 +1,14 @@
 import type { Timestamp } from "firebase/firestore";
 
-export type TaskStatus = "pending" | "seen" | "accepted" | "done" | "declined";
+export type TaskStatus =
+  | "pending"
+  | "seen"
+  | "accepted"
+  | "done"
+  | "declined"
+  | "verified"
+  | "archived"
+  | "cancelled";
 
 export interface Family {
   id: string;
@@ -27,6 +35,11 @@ export interface Task {
   effectiveDeadline: Timestamp | null;
   declineReason: string | null;
   declinedBy: string | null;
+  verifiedAt: Timestamp | null;
+  verifiedBy: string | null;
+  archivedAt: Timestamp | null;
+  cancelledAt: Timestamp | null;
+  cancelReason: string | null;
   lastHistoryEventId: string;
 }
 
@@ -37,7 +50,10 @@ export type HistoryEventType =
   | "status_changed"
   | "declined"
   | "deadline_proposed"
-  | "deadline_accepted";
+  | "deadline_accepted"
+  | "verified"
+  | "archived"
+  | "cancelled";
 
 export interface HistoryEvent {
   id: string;

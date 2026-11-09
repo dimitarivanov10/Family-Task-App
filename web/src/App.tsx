@@ -3,6 +3,7 @@ import { FamilyProvider, useFamily } from "./context/FamilyContext";
 import { TaskProvider } from "./context/TaskContext";
 import { useLoadingTimeout } from "./hooks/useLoadingTimeout";
 import AuthScreen from "./pages/AuthScreen";
+import VerifyEmailScreen from "./pages/VerifyEmailScreen";
 import FamilySetupScreen from "./pages/FamilySetupScreen";
 import DashboardScreen from "./pages/DashboardScreen";
 
@@ -32,7 +33,7 @@ function ErrorScreen({ message }: { message: string }) {
 }
 
 function AppRouter() {
-  const { user, loading: authLoading, error: authError } = useAuth();
+  const { user, emailVerified, loading: authLoading, error: authError } = useAuth();
   const authTimedOut = useLoadingTimeout(authLoading);
 
   if (authError) {
@@ -49,6 +50,13 @@ function AppRouter() {
 
   if (!user) {
     return <AuthScreen />;
+  }
+
+  // Family/task access requires a verified email (see firestore.rules'
+  // isVerified()) — this screen is the only thing an unverified account
+  // can reach beyond their own profile.
+  if (!emailVerified) {
+    return <VerifyEmailScreen />;
   }
 
   return (

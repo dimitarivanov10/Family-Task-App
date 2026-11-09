@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -43,9 +44,17 @@ interface TaskContextValue {
   reopenTask: (taskId: string) => Promise<void>;
   proposeDeadline: (taskId: string, deadline: number) => Promise<void>;
   acceptDeadlineProposal: (taskId: string) => Promise<void>;
+  verifyTask: (taskId: string) => Promise<void>;
+  cancelTask: (taskId: string, reason: string) => Promise<void>;
 }
 
 const TaskContext = createContext<TaskContextValue | undefined>(undefined);
+
+// A "verified" task is archived automatically — no server exists to run
+// this on a schedule, so instead it's checked lazily whenever the task
+// list loads, by whichever assignee/creator happens to have the app
+// open (see the effect below).
+const ARCHIVE_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
 
 export function TaskProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -53,6 +62,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const archivingRef = useRef<Set<string>>(new Set());
 
   // Only tasks the current user was assigned to, or created themselves —
   // never the whole family's tasks. Firestore can't filter a list query
@@ -91,6 +101,26 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
     return unsubscribe;
   }, [activeFamily, user]);
+
+  // Lazily sweep verified tasks past the archive delay into "archived".
+  // Self-limiting the same way auto-seen is: once a task's status
+  // actually becomes "archived", this condition no longer matches it.
+  useEffect(() => {
+    const due = tasks.filter(
+      (t) =>
+        t.status === "verified" &&
+        t.verifiedAt &&
+        Date.now() - t.verifiedAt.toMillis() >= ARCHIVE_AFTER_MS &&
+        !archivingRef.current.has(t.id),
+    );
+    for (const task of due) {
+      archivingRef.current.add(task.id);
+      void archiveTask(task.id).catch(() => {
+        archivingRef.current.delete(task.id);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks]);
 
   // Every task write is paired, in the same batch, with a new history
   // entry — the rules require the task's lastHistoryEventId to point at
@@ -163,6 +193,11 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       effectiveDeadline: null,
       declineReason: null,
       declinedBy: null,
+      verifiedAt: null,
+      verifiedBy: null,
+      archivedAt: null,
+      cancelledAt: null,
+      cancelReason: null,
       lastHistoryEventId: historyRef.id,
     });
     batch.set(historyRef, {
@@ -291,6 +326,60 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     );
   }
 
+  // The creator reviewing a done task — never the assignee who did the
+  // work, enforced both here and in firestore.rules.
+  async function verifyTask(taskId: string) {
+    if (!user) return;
+    const task = findTask(taskId);
+    if (task.createdBy !== user.uid) {
+      throw new Error("Само създателят на задачата може да я провери.");
+    }
+    if (task.status !== "done") {
+      throw new Error("Задачата трябва първо да бъде завършена.");
+    }
+    await writeTaskChange(
+      taskId,
+      { status: "verified", verifiedAt: serverTimestamp(), verifiedBy: user.uid },
+      "verified",
+    );
+  }
+
+  // Mechanical cleanup, not a judgment call — called automatically a
+  // few days after verification (see the effect above), but also usable
+  // directly by either party.
+  async function archiveTask(taskId: string) {
+    const task = findTask(taskId);
+    if (task.status !== "verified") {
+      throw new Error("Само проверена задача може да бъде архивирана.");
+    }
+    await writeTaskChange(taskId, { status: "archived", archivedAt: serverTimestamp() }, "archived");
+  }
+
+  // Creator-only soft delete: the task and its full history stay in
+  // Firestore forever, this just marks it cancelled and hides it from
+  // the active board. Only makes sense before real work was done.
+  async function cancelTask(taskId: string, reason: string) {
+    if (!user) return;
+    const task = findTask(taskId);
+    if (task.createdBy !== user.uid) {
+      throw new Error("Само създателят на задачата може да я отмени.");
+    }
+    if (!["pending", "seen", "accepted", "declined"].includes(task.status)) {
+      throw new Error("Тази задача вече не може да бъде отменена.");
+    }
+    const trimmedReason = reason.trim();
+    await writeTaskChange(
+      taskId,
+      {
+        status: "cancelled",
+        cancelledAt: serverTimestamp(),
+        cancelReason: trimmedReason || null,
+      },
+      "cancelled",
+      trimmedReason ? { reason: trimmedReason } : undefined,
+    );
+  }
+
   return (
     <TaskContext.Provider
       value={{
@@ -305,6 +394,8 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         reopenTask,
         proposeDeadline,
         acceptDeadlineProposal,
+        verifyTask,
+        cancelTask,
       }}
     >
       {children}

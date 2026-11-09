@@ -18,6 +18,8 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
     reopenTask,
     proposeDeadline,
     acceptDeadlineProposal,
+    verifyTask,
+    cancelTask,
   } = useTasks();
   const { history, loading: historyLoading, error: historyError } = useTaskHistory(
     activeFamily?.id ?? "",
@@ -30,6 +32,8 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
   const [deadlineInput, setDeadlineInput] = useState("");
   const [declining, setDeclining] = useState(false);
   const [declineReasonInput, setDeclineReasonInput] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelReasonInput, setCancelReasonInput] = useState("");
 
   const isAssignee = !!user && task.assignees.includes(user.uid);
 
@@ -48,7 +52,10 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
   }
 
   const isCreator = task.createdBy === user.uid;
-  const isOpen = task.status !== "done" && task.status !== "declined";
+  const isOpen = !["done", "declined", "verified", "archived", "cancelled"].includes(task.status);
+  const canReopen = task.status === "done" || task.status === "declined";
+  const canVerify = isCreator && task.status === "done";
+  const canCancel = isCreator && ["pending", "seen", "accepted", "declined"].includes(task.status);
   const assigneeNames = task.assignees.map((uid) => activeFamily.memberNames[uid] ?? uid);
   const operativeDeadline = task.effectiveDeadline ?? task.deadline;
 
@@ -102,6 +109,15 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
     });
   }
 
+  async function handleCancelSubmit(e: FormEvent) {
+    e.preventDefault();
+    await runAction(async () => {
+      await cancelTask(task.id, cancelReasonInput);
+      setCancelling(false);
+      setCancelReasonInput("");
+    });
+  }
+
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/60 px-4">
       <div className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-xl shadow-black/30 ring-1 ring-edge/60">
@@ -122,6 +138,22 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
           <div className="mt-2 rounded-lg bg-rose-soft p-2 text-sm text-rose">
             Отказана от {activeFamily.memberNames[task.declinedBy ?? ""] ?? task.declinedBy}
             {task.declineReason && <> — {task.declineReason}</>}
+          </div>
+        )}
+
+        {(task.status === "verified" || task.status === "archived") && (
+          <div className="mt-2 rounded-lg bg-mint-soft p-2 text-sm text-mint">
+            Проверена от {activeFamily.memberNames[task.verifiedBy ?? ""] ?? task.verifiedBy}
+            {task.verifiedAt && <> на {formatDateTime(task.verifiedAt)}</>}
+            {task.status === "archived" && <> · Архивирана{task.archivedAt && <> на {formatDateTime(task.archivedAt)}</>}</>}
+          </div>
+        )}
+
+        {task.status === "cancelled" && (
+          <div className="mt-2 rounded-lg bg-surface-2 p-2 text-sm text-ink-faint">
+            Отменена от създателя
+            {task.cancelledAt && <> на {formatDateTime(task.cancelledAt)}</>}
+            {task.cancelReason && <> — {task.cancelReason}</>}
           </div>
         )}
 
@@ -247,17 +279,70 @@ export default function TaskDetailModal({ task, onClose }: { task: Task; onClose
           </form>
         )}
 
-        {(isAssignee || isCreator) && !isOpen && (
+        {(canVerify || ((isAssignee || isCreator) && canReopen)) && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {canVerify && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => runAction(() => verifyTask(task.id))}
+                className="rounded-full bg-mint px-3 py-1.5 text-sm font-semibold text-bg hover:brightness-95 disabled:opacity-60"
+              >
+                Провери
+              </button>
+            )}
+            {(isAssignee || isCreator) && canReopen && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => runAction(() => reopenTask(task.id))}
+                className="rounded-full border border-edge px-3 py-1.5 text-sm font-medium text-ink-dim hover:text-ink disabled:opacity-60"
+              >
+                Отвори отново
+              </button>
+            )}
+          </div>
+        )}
+
+        {canCancel && !cancelling && (
           <div className="mt-4">
             <button
               type="button"
               disabled={busy}
-              onClick={() => runAction(() => reopenTask(task.id))}
-              className="rounded-full border border-edge px-3 py-1.5 text-sm font-medium text-ink-dim hover:text-ink disabled:opacity-60"
+              onClick={() => setCancelling(true)}
+              className="rounded-full border border-edge px-3 py-1.5 text-sm font-medium text-ink-faint hover:text-rose disabled:opacity-60"
             >
-              Отвори отново
+              Отмени задачата
             </button>
           </div>
+        )}
+
+        {cancelling && (
+          <form onSubmit={handleCancelSubmit} className="mt-4 space-y-2">
+            <input
+              type="text"
+              value={cancelReasonInput}
+              onChange={(e) => setCancelReasonInput(e.target.value)}
+              placeholder="Причина за отмяната (незадължително)"
+              className="w-full rounded-lg border border-edge bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-ink-faint focus:border-rose focus:outline-none focus:ring-1 focus:ring-rose"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCancelling(false)}
+                className="flex-1 rounded-full border border-edge px-3 py-1 text-sm font-medium text-ink-dim hover:text-ink"
+              >
+                Назад
+              </button>
+              <button
+                type="submit"
+                disabled={busy}
+                className="flex-1 rounded-full bg-rose px-3 py-1 text-sm font-semibold text-bg hover:brightness-95 disabled:opacity-60"
+              >
+                Потвърди отмяната
+              </button>
+            </div>
+          </form>
         )}
 
         <div className="mt-5 border-t border-edge pt-4">

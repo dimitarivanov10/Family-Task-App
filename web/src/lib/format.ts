@@ -48,6 +48,9 @@ export const STATUS_LABELS: Record<string, string> = {
   accepted: "Приета",
   done: "Завършена",
   declined: "Отказана",
+  verified: "Проверена",
+  archived: "Архивирана",
+  cancelled: "Отменена",
 };
 
 export const STATUS_BADGE_CLASSES: Record<string, string> = {
@@ -56,6 +59,9 @@ export const STATUS_BADGE_CLASSES: Record<string, string> = {
   accepted: "bg-accent-soft text-accent",
   done: "bg-mint-soft text-mint",
   declined: "bg-rose-soft text-rose",
+  verified: "bg-mint-soft text-mint",
+  archived: "bg-surface-2 text-ink-faint",
+  cancelled: "bg-surface-2 text-ink-faint",
 };
 
 // Thin accent strip on the left edge of a task card, matching its status.
@@ -65,6 +71,9 @@ export const STATUS_ACCENT_CLASSES: Record<string, string> = {
   accepted: "bg-accent",
   done: "bg-mint",
   declined: "bg-rose",
+  verified: "bg-mint",
+  archived: "bg-ink-faint",
+  cancelled: "bg-ink-faint",
 };
 
 export const HISTORY_LABELS: Record<string, string> = {
@@ -75,4 +84,7 @@ export const HISTORY_LABELS: Record<string, string> = {
   declined: "Отказана",
   deadline_proposed: "Предложен нов срок",
   deadline_accepted: "Приет нов срок",
+  verified: "Проверена",
+  archived: "Архивирана",
+  cancelled: "Отменена",
 };

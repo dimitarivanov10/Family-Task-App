@@ -7,12 +7,19 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Family/task access additionally requires a verified email address
+    // (see users/{uid} below, which stays open to unverified accounts so
+    // onboarding and the verify-email screen keep working).
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
     // Single-document membership check (used by `get`/`create`/`update`
     // requests, never by a `list` query — get()-based rules can't be
     // validated against a query's filters, see the comment on
     // /families/{familyId} below).
     function isFamilyMember(familyId) {
-      return isSignedIn()
+      return isVerified()
         && exists(/databases/$(database)/documents/families/$(familyId))
         && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members;
     }
@@ -49,13 +56,17 @@ service cloud.firestore {
     function historyEventTypes() {
       return [
         'created', 'seen', 'accepted', 'status_changed', 'declined',
-        'deadline_proposed', 'deadline_accepted'
+        'deadline_proposed', 'deadline_accepted',
+        'verified', 'archived', 'cancelled'
       ];
     }
 
     // User profile: only the owner can read/write their own profile,
     // including the familyIds pointer list used to find their families
     // (see /families/{familyId} below for why this replaced a list query).
+    // Intentionally not gated on isVerified() — an unverified user still
+    // needs to read/write their own profile for the verify-email screen
+    // and resend flow to work before they can use any family/task data.
     match /users/{uid} {
       allow read: if isSignedIn() && request.auth.uid == uid;
       allow create, update: if isSignedIn() && request.auth.uid == uid;
@@ -78,9 +89,9 @@ service cloud.firestore {
       // a list/query request when the rule is provably tied to the
       // query's own filter — a get()-based rule isn't, and gets denied
       // outright even when every individual document would pass.
-      allow read: if isSignedIn() && request.auth.uid in resource.data.members;
+      allow read: if isVerified() && request.auth.uid in resource.data.members;
 
-      allow create: if isSignedIn()
+      allow create: if isVerified()
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.members == [request.auth.uid]
         && request.resource.data.memberNames.keys().hasOnly([request.auth.uid])
@@ -89,7 +100,7 @@ service cloud.firestore {
 
       // Join: add exactly the caller's own uid to members (and their own
       // entry to memberNames), nothing else.
-      allow update: if isSignedIn()
+      allow update: if isVerified()
         && !(request.auth.uid in resource.data.members)
         && request.resource.data.members == resource.data.members.concat([request.auth.uid])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberNames'])
@@ -114,7 +125,7 @@ service cloud.firestore {
         allow read: if isFamilyMember(familyId)
           && (request.auth.uid in resource.data.assignees || request.auth.uid == resource.data.createdBy);
 
-        allow create: if isSignedIn()
+        allow create: if isVerified()
           && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.createdAt == request.time
@@ -128,11 +139,14 @@ service cloud.firestore {
         // Immutable once created except for a fixed set of mutable
         // "status fields". An assignee may move the task through
         // seen/accepted/done/declined; the creator may additionally
-        // reopen a done or declined task. Every update must be paired,
-        // in the same batch, with a new history entry pointing back at
-        // this exact write (see history/{eventId} below).
-        allow update: if isSignedIn()
+        // reopen a done or declined task. "verified"/"archived"/
+        // "cancelled" are excluded here — those go through their own
+        // narrower clauses below. Every update must be paired, in the
+        // same batch, with a new history entry pointing back at this
+        // exact write (see history/{eventId} below).
+        allow update: if isVerified()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(taskStatusFields())
+          && !(request.resource.data.status in ['verified', 'archived', 'cancelled'])
           && (
             (request.auth.uid in resource.data.assignees)
             || (request.auth.uid == resource.data.createdBy
@@ -144,19 +158,19 @@ service cloud.firestore {
         // Propose a new deadline: either the creator or an assignee may
         // propose, but only while there's no proposal already pending,
         // and the proposedBy must be the caller themself.
-        allow update: if isSignedIn()
+        allow update: if isVerified()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['proposedDeadline', 'proposedBy', 'lastHistoryEventId'])
           && (request.auth.uid in resource.data.assignees || request.auth.uid == resource.data.createdBy)
           && resource.data.proposedDeadline == null
           && request.resource.data.proposedBy == request.auth.uid
-          && !(resource.data.status in ['done', 'declined'])
+          && !(resource.data.status in ['done', 'declined', 'verified', 'archived', 'cancelled'])
           && historyPairingValid(familyId, taskId);
 
         // Accept a pending deadline proposal: only the other party may
         // confirm it — never the proposer. If the creator proposed, an
         // assignee must confirm; if an assignee proposed, the creator
         // must confirm.
-        allow update: if isSignedIn()
+        allow update: if isVerified()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['effectiveDeadline', 'proposedDeadline', 'proposedBy', 'lastHistoryEventId'])
           && resource.data.proposedDeadline != null
           && request.resource.data.effectiveDeadline == resource.data.proposedDeadline
@@ -167,6 +181,42 @@ service cloud.firestore {
             (resource.data.proposedBy == resource.data.createdBy && request.auth.uid in resource.data.assignees)
             || (resource.data.proposedBy != resource.data.createdBy && request.auth.uid == resource.data.createdBy)
           )
+          && historyPairingValid(familyId, taskId);
+
+        // Verify: only the creator, and only once the assignee has
+        // marked it done — this is the "the one who gave the task
+        // checks it" review step, so an assignee can never verify their
+        // own completed work.
+        allow update: if isVerified()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'verifiedAt', 'verifiedBy', 'lastHistoryEventId'])
+          && request.auth.uid == resource.data.createdBy
+          && resource.data.status == 'done'
+          && request.resource.data.status == 'verified'
+          && request.resource.data.verifiedBy == request.auth.uid
+          && request.resource.data.verifiedAt == request.time
+          && historyPairingValid(familyId, taskId);
+
+        // Archive: a mechanical cleanup step once verified, not a
+        // judgment call, so either party may trigger it (the client
+        // does so automatically a few days after verification).
+        allow update: if isVerified()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'archivedAt', 'lastHistoryEventId'])
+          && (request.auth.uid in resource.data.assignees || request.auth.uid == resource.data.createdBy)
+          && resource.data.status == 'verified'
+          && request.resource.data.status == 'archived'
+          && request.resource.data.archivedAt == request.time
+          && historyPairingValid(familyId, taskId);
+
+        // Cancel: creator-only soft delete. The task and its full
+        // history stay in Firestore forever — this only marks it
+        // cancelled and takes it off the active board. Only makes sense
+        // before real work was done, not for a task already done.
+        allow update: if isVerified()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt', 'cancelReason', 'lastHistoryEventId'])
+          && request.auth.uid == resource.data.createdBy
+          && resource.data.status in ['pending', 'seen', 'accepted', 'declined']
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.cancelledAt == request.time
           && historyPairingValid(familyId, taskId);
 
         allow delete: if false;
@@ -180,7 +230,7 @@ service cloud.firestore {
         match /history/{eventId} {
           allow read: if isTaskViewer(familyId, taskId);
 
-          allow create: if isSignedIn()
+          allow create: if isVerified()
             && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members
             && request.resource.data.byUid == request.auth.uid
             && request.resource.data.at == request.time
